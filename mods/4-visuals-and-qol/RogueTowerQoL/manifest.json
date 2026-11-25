@@ -1,0 +1,9 @@
+{
+    "name":  "RogueTowerQoL",
+    "version_number":  "1.0.0",
+    "website_url":  "https://github.com/QueenRose4444/rogue-tower-mods",
+    "description":  "Clean-room MIT QoL \u0026 Levels-to-RPM suite: build \u0026 hover range rings, MaterialPropertyBlock priority tinting, persistent per-tower priority defaults \u0026 Ctrl+C/V sync, +7% RPM/level scaling, Spacebar pause/build, and automatic legacy plugin conflict guards. Created by Rose with Gemini \u0026 Claude.",
+    "dependencies":  [
+                         "bbepis-BepInEx_Rogue_Tower-5.4.1900"
+                     ]
+}

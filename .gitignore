@@ -1,0 +1,18 @@
+# Build outputs & IDE files
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.sln.docstates
+packages/
+
+# Local machine overrides & logs
+BepInEx/LogOutput.log
+*.log
+docs/handoff/
+docs/decompiled-reference/
+screenshots/
+*.tmp
+.DS_Store
+Thumbs.db

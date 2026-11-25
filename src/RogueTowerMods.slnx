@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="CustomLevels\CustomLevels.csproj" />
+  <Project Path="QuickTree\QuickTree.csproj" />
+  <Project Path="LagFix\LagFix.csproj" />
+  <Project Path="CustomMaps\CustomMaps.csproj" />
+  <Project Path="Themes\Themes.csproj" />
+  <Project Path="RogueTowerQoL\RogueTowerQoL.csproj" />
+</Solution>

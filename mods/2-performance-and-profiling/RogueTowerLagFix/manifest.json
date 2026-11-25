@@ -1,0 +1,9 @@
+{
+    "name":  "RogueTowerLagFix",
+    "version_number":  "1.3.0",
+    "website_url":  "https://github.com/QueenRose4444/rogue-tower-mods",
+    "description":  "Late-game FPS \u0026 GC optimizer: 10x fast-forward physics scaling, pure-C# Tower.DetectEnemies \u0026 AoE scanning, Enemy/Pathfinder caching, per-wave Dropper path cache, HealthBar diffing, DamageNumber coalescing, Landmine cap, and live Mod Menu toggles. Created by Rose with Gemini \u0026 Claude.",
+    "dependencies":  [
+                         "bbepis-BepInEx_Rogue_Tower-5.4.1900"
+                     ]
+}

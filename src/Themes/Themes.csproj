@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>RogueTowerThemes</AssemblyName>
+    <RootNamespace>RogueTowerThemes</RootNamespace>
+  </PropertyGroup>
+</Project>

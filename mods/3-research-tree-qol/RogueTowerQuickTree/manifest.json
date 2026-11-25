@@ -1,0 +1,9 @@
+{
+    "name":  "RogueTowerQuickTree",
+    "version_number":  "1.4.0",
+    "website_url":  "https://github.com/QueenRose4444/rogue-tower-mods",
+    "description":  "One-click Research Tree Buy/Refund buttons, Shift/Ctrl deep subtree purchasing, cascade refund guards, and live Mod Menu Auto-Max card controls. Created by Rose with Gemini \u0026 Claude.",
+    "dependencies":  [
+                         "bbepis-BepInEx_Rogue_Tower-5.4.1900"
+                     ]
+}

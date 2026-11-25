@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>RogueTowerQuickTree</AssemblyName>
+    <RootNamespace>RogueTowerQuickTree</RootNamespace>
+  </PropertyGroup>
+</Project>
+

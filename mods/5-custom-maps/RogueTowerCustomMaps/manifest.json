@@ -1,0 +1,9 @@
+{
+    "name":  "RogueTowerCustomMaps",
+    "version_number":  "1.2.0",
+    "website_url":  "https://github.com/QueenRose4444/rogue-tower-mods",
+    "description":  "Clean-room remake of custom map generation (Spiral CCW/CW, Barely Legal, The Clock, Instant Portal, T-Split, Custom CSV) with Mod Menu integration. Inspired by acr-Rogue_Tower_Custom_Maps; written by Rose with Gemini \u0026 Claude.",
+    "dependencies":  [
+                         "bbepis-BepInEx_Rogue_Tower-5.4.1900"
+                     ]
+}
