@@ -1,15 +1,31 @@
-# RogueTowerQoL (v1.0.0)
+# RogueTowerQoL (v2.0.0)
 
-Clean-room MIT QoL & Levels-to-RPM suite: build & hover range rings, MaterialPropertyBlock priority tinting, persistent per-tower priority defaults & Ctrl+C/V sync, +7% RPM/level scaling, Spacebar pause/build, and automatic legacy plugin conflict guards. Created by Rose with Gemini & Claude.
+Complete non-cheat MIT QoL suite for Rogue Tower: custom hotbar sorting + Sort Bar popup, tower hold & +10 snap upgrades, 90-deg camera rotation/top-down/X-ray occluded tile placement, Open Chests & Chop Trees HUD, early wave expand, range preview rings, MaterialPropertyBlock priority tinting/sync, +7%/lvl RPM scaling, and Spacebar pause/build. 100% AI-generated (Google Gemini & Anthropic Claude), designed by Rose.
 
-> **AI Collaboration Notice**
-> Created by **Rose** with AI assistance using **Google Gemini** and **Anthropic Claude** models.
+> **100% AI-Generated Code & Docs Notice**
+> Every line of code and documentation in this mod was **100% written by AI** (**Google Gemini** and **Anthropic Claude** models), directed and designed by **Rose**.
 
 ## Features
-- Procedural `LineRenderer` range preview circle/square in build mode and while hovering placed towers (skips UI hover cleanly).
-- Zero-allocation `MaterialPropertyBlock` tower priority tinting, persistent per-`TowerType` default priorities, and synchronized `Q`/`E` + `Ctrl+C`/`Ctrl+V` priority clipboards.
-- Configurable **Levels-to-RPM** (`+7%` RPM per level starting at Level 2 by default) + standalone Spacebar pause/resume + build-while-paused.
-- Automatically defers to legacy Thunderstore plugins if both are installed side-by-side so hooks never duplicate.
+- **Custom Hotbar Sorting + Standalone `Sort Bar` Overlay:** Customize the exact Left -> Right order of all **15 Row 1 Towers** (Ballista, Mortar, Flame Thrower, Poison Sprayer, Frost Keep/Freeze, Tesla Coil, Shredder/Saw Blade, Lookout/Spotter, Encampment, Cannon, Vampire Lair, Radar/Biplane, Obelisk, Particle Cannon, Monument) and **5 Row 2 Buildings** (Mana Siphon, Mana Bank, Haunted House/Grave, Mine, University) via `Sort Bar` at the bottom of the screen or config (`AutoSortHotbar`, `ShowHotbarSortButton`). Zero cheats involved.
+- **Tower Fast Upgrades (`+10` Snap & Hold-to-Buy):** Hold Health/Armor/Shield upgrade buttons or `1`/`2`/`3` keys to continuously buy levels (`Normal` / `Fast` / `Turbo` speeds), or click the attached **`+10` Snap Panel** (`Shift+1/2/3` or `Shift+Click`) to jump directly to the next multiple of 10 (`3 -> 10 -> 20`).
+- **`90 deg` Camera Rotation, Top-Down & Occluded Tile Placement:** Rotate camera cleanly in `90 deg` steps (`[` / `]`), toggle straight **Top-Down tactical view** (`V` or `AutoTopDownInBuildMode`), automatically billboard world-space expand arrows & placement ghosts, **X-Ray raycast through foreground cliffs/tall towers** to place on hidden grass tiles behind them, and hold **`LeftAlt`** to flatten tall tower meshes & select deeper hidden tiles/towers behind obstacles.
+- **Quick Chests, Chop Trees & Early Expand HUD:** Shows non-intrusive **`Open Chests`** and **`Chop Trees`** buttons beside Tower HP (displaying exact total gold & chest drop chance) plus optional **Auto-Open Chests** (`PopupButton` / `AutoOpenImmediately` / `Off`), and **`AllowEarlyExpand`** so you can expand to the next tile mid-wave without losing current-wave XP/score/card draws.
+- **Build & Hover Range Preview Rings:** Procedural `LineRenderer` circles/squares showing exact range including height bonuses while placing or hovering placed towers (skips UI hover cleanly).
+- **Zero-Alloc `MaterialPropertyBlock` Priority Tinting + Persistent Defaults + Sync:** Color-codes tower tops cleanly without leaking per-tower `Material` instances, remembers your default priority triple per `TowerType` across runs, and keeps `Q`/`E` + `Ctrl+C`/`Ctrl+V` priority clipboards synchronized.
+- **Levels-to-RPM + Spacebar Pause & Build:** Configurable `+7%` RPM per tower level (starting at Level 2 by default), `Space` pause/resume preserving speed, build ghost updates while paused, and `HideKeybindsOverlay`.
+
+## Keybinds & Controls
+- `[` / `]`: Rotate camera `-90 deg` / `+90 deg`.
+- `V`: Toggle straight Top-Down tactical view (safely ignored during `Ctrl+V` paste).
+- `LeftAlt` (hold): Flatten tall tower meshes + select/place behind foreground cliffs & towers.
+- `Hold 1 / 2 / 3` or hold UI buttons: Rapid continuous Health/Armor/Shield upgrading.
+- `Shift + 1 / 2 / 3` or click `+10`: Snap stat multiplier to the next multiple of 10.
+- `Ctrl+C` / `Ctrl+V` (or `Q`/`E`) while selecting a tower: Copy & paste targeting priority triple.
+- `Space`: Pause/Resume while preserving custom game speed; `Sort Bar` pill: Open hotbar reorder popup.
+
+## What We Changed / Improved Over Upstream Inspiration
+- Consolidated 8 standalone non-cheat QoL systems cleanly into one MIT plugin so you do not need separate `QoLChanges`, `QoLChangesPastePatch`, `LevelsToRpm`, or `WASDRemover` installs (while still detecting legacy plugins automatically and deferring via `ForceOverrideLegacy = false` if someone keeps them installed).
+- Replaced shared-material color mutation with GPU-friendly `MaterialPropertyBlock` priority tinting (no VRAM material leaks across 100+ towers), synced `Ctrl+C`/`V` with `Q`/`E`, fixed Hover Range Rings triggering through UI panels, and moved all non-cheat UX out of `RogueTowerModMenu`.
 
 ## Source Code
 - Visual C# project: [`src/RogueTowerQoL/`](../../../src/RogueTowerQoL/)
@@ -23,4 +39,4 @@ Clean-room MIT QoL & Levels-to-RPM suite: build & hover range rings, MaterialPro
 2. Copy `plugins/RogueTowerQoL.dll` into `Rogue Tower/BepInEx/plugins/RogueTowerQoL/`.
 
 ## Credits & Inspiration
-- Original clean-room implementation by **Rose**, inspired by community QoL concepts (`Theirown/QoLChanges`, `dmchurch` priority colors, `afld-LevelsToRpm`, `Jdewi-SpeedControls`, `RustyDios-WASDRemover`).
+- Clean-room implementation designed by **Rose**, inspired by community QoL concepts (`Theirown/QoLChanges`, `dmchurch` priority colors, `afld-LevelsToRpm`, `Jdewi-SpeedControls`, `RustyDios-WASDRemover`, and Steam Discussions occlusion feedback).

@@ -1,35 +1,36 @@
 # Rose's Rogue Tower Mod Suite
 
-Original, clean-room **BepInEx 5** mods for **Rogue Tower** -- unified live **Mod Menu**, customizable tower/building hotbars & 5 loadouts, hold / `+10` snap tower upgrades, `90 deg` camera rotation & X-ray occluded placement, customizable Light & Dark themes (`RogueTowerThemes`), clean-room QoL & Levels-to-RPM (`RogueTowerQoL`), late-game FPS optimizations (`RogueTowerLagFix`), one-click Research Tree automation (`RogueTowerQuickTree`), custom maps (`RogueTowerCustomMaps`), and reproducible Round 40/45 Level-40 FPS benchmark scenes with a per-frame stall & hang profiler.
+Original, clean-room **BepInEx 5** mods for **Rogue Tower** -- cleanly split between **Sandbox Cheats & Profiling** (`RogueTowerModMenu`), **Non-Cheat Quality of Life & Hotbar Sorting** (`RogueTowerQoL`), **Late-Game FPS Optimizations** (`RogueTowerLagFix`), **All-in-One Research Tree Buy + Refunds + Auto-Max** (`RogueTowerQuickTree`), **Customizable Light & Dark Themes** (`RogueTowerThemes`), and **In-Game Custom Map Building** (`RogueTowerCustomMaps`).
 
-> **AI Collaboration Notice**
-> These mods were created by **Rose** with AI assistance using **Google Gemini** and **Anthropic Claude** models.
+> **100% AI-Generated Code & Docs Notice**
+> Every line of code and documentation in this repository was **100% written by AI** (**Google Gemini** and **Anthropic Claude** models), directed and designed by **Rose**.
 
 ---
 
 ## Included Clean-Room Mods (Source + Packaged Releases)
 
+*(Click any mod name below to browse its mod folder & full documentation.)*
+
 | Mod Package | Version | Plugin DLL | Summary |
 | :--- | :---: | :--- | :--- |
-| **[RogueTowerModMenu](./mods/1-core-mod-menu/RogueTowerModMenu/README.md)** | `2.4.0` | `RogueTowerCustomLevels.dll` | Unified live Mod Menu (` / F6), Quick HUD (F10), tower/building loadouts & hotbar sorting, hold/+10 tower upgrades, 90-deg/top-down/X-ray placement, sandbox cheats, Round 40/45 Level-40 benchmark scenes + per-frame stall profiler, and loopback test harness. Created by Rose with Gemini & Claude. |
-| **[RogueTowerLagFix](./mods/2-performance-and-profiling/RogueTowerLagFix/README.md)** | `1.3.0` | `RogueTowerLagFix.dll` | Late-game FPS & GC optimizer: 10x fast-forward physics scaling, pure-C# Tower.DetectEnemies & AoE scanning, Enemy/Pathfinder caching, per-wave Dropper path cache, HealthBar diffing, DamageNumber coalescing, Landmine cap, and live Mod Menu toggles. Created by Rose with Gemini & Claude. |
-| **[RogueTowerQuickTree](./mods/3-research-tree-qol/RogueTowerQuickTree/README.md)** | `1.4.0` | `RogueTowerQuickTree.dll` | One-click Research Tree Buy/Refund buttons, Shift/Ctrl deep subtree purchasing, cascade refund guards, and live Mod Menu Auto-Max card controls. Created by Rose with Gemini & Claude. |
-| **[RogueTowerThemes](./mods/4-visuals-and-qol/RogueTowerThemes/README.md)** | `1.0.0` | `RogueTowerThemes.dll` | Clean-room customizable Light & Dark mode switcher with non-destructive original scene caching, per-theme sky/sun/ambient/UI brightness presets, F7 quick toggle, and live Mod Menu integration. Created by Rose with Gemini & Claude. |
-| **[RogueTowerQoL](./mods/4-visuals-and-qol/RogueTowerQoL/README.md)** | `1.0.0` | `RogueTowerQoL.dll` | Clean-room MIT QoL & Levels-to-RPM suite: build & hover range rings, MaterialPropertyBlock priority tinting, persistent per-tower priority defaults & Ctrl+C/V sync, +7% RPM/level scaling, Spacebar pause/build, and automatic legacy plugin conflict guards. Created by Rose with Gemini & Claude. |
-| **[RogueTowerCustomMaps](./mods/5-custom-maps/RogueTowerCustomMaps/README.md)** | `1.2.0` | `RogueTowerCustomMaps.dll` | Clean-room remake of custom map generation (Spiral CCW/CW, Barely Legal, The Clock, Instant Portal, T-Split, Custom CSV) with Mod Menu integration. Inspired by acr-Rogue_Tower_Custom_Maps; written by Rose with Gemini & Claude. |
+| **[RogueTowerModMenu](./mods/1-core-mod-menu/RogueTowerModMenu)** | `2.5.0` | `RogueTowerCustomLevels.dll` | Cheat & sandbox Mod Menu (`), saved tower loadouts & unlock grants, card/tree spawners, live companion module controls, Round 40/45 Level-40 FPS benchmark scenes, per-frame stall profiler, and loopback test harness. 100% AI-generated (Google Gemini & Anthropic Claude), designed by Rose. |
+| **[RogueTowerQoL](./mods/4-visuals-and-qol/RogueTowerQoL)** | `2.0.0` | `RogueTowerQoL.dll` | Complete non-cheat MIT QoL suite for Rogue Tower: custom hotbar sorting + Sort Bar popup, tower hold & +10 snap upgrades, 90-deg camera rotation/top-down/X-ray occluded tile placement, Open Chests & Chop Trees HUD, early wave expand, range preview rings, MaterialPropertyBlock priority tinting/sync, +7%/lvl RPM scaling, and Spacebar pause/build. 100% AI-generated (Google Gemini & Anthropic Claude), designed by Rose. |
+| **[RogueTowerLagFix](./mods/2-performance-and-profiling/RogueTowerLagFix)** | `1.3.0` | `RogueTowerLagFix.dll` | Late-game FPS & GC optimizer (verified 4.60 -> 43.54 FPS in 300-tower Level-40 8x stress tests): fast-forward physics scaling, pure-C# Tower.DetectEnemies & AoE scans, Enemy/Pathfinder caching, per-wave Dropper path cell cache, dead-enemy TakeDamage short-circuit, Landmine cap, HealthBar diffing, DamageNumber coalescing, FX caps, and live Mod Menu toggles. 100% AI-generated (Google Gemini & Anthropic Claude), designed by Rose. |
+| **[RogueTowerQuickTree](./mods/3-research-tree-qol/RogueTowerQuickTree)** | `1.4.0` | `RogueTowerQuickTree.dll` | All-in-one Research Tree Buy + Bundled Native Upgrade Refunding mod: single-click, Right-Click, branch, full-tree, & Refund All XP refunds (no separate Refund mod needed!), one-click Buy Tree, Shift/Ctrl chain buying, vanilla armor unlockString bug fixes, and in-run Auto-Max Branch. 100% AI-generated (Google Gemini & Anthropic Claude), designed by Rose. |
+| **[RogueTowerThemes](./mods/4-visuals-and-qol/RogueTowerThemes)** | `1.0.0` | `RogueTowerThemes.dll` | Clean-room customizable Light & Dark mode switcher with non-destructive original scene caching, separate Sky/Ambient/Sun/Fill/UI Brightness/High-Contrast presets, F7 quick toggle, and live Mod Menu integration. 100% AI-generated (Google Gemini & Anthropic Claude), designed by Rose. |
+| **[RogueTowerCustomMaps](./mods/5-custom-maps/RogueTowerCustomMaps)** | `1.3.0` | `RogueTowerCustomMaps.dll` | Clean-room custom map generator featuring Play Menu preset cycling, a built-in In-Game Custom Map Sequence Builder UI (click +S/+L/+R/+SLR/+Portal chips without editing configs!), non-destructive TileManager pool restoration, and Mod Menu sync. Inspired by acr-Rogue_Tower_Custom_Maps; 100% AI-generated (Google Gemini & Anthropic Claude), designed by Rose. |
 
-*(Third-party mods without an explicit open-source license on GitHub/Thunderstore are **not** bundled here -- install any companion mods directly from their upstream Thunderstore/GitHub releases below.)*
+*(Third-party mods without an explicit open-source license on GitHub/Thunderstore are **not** bundled here -- install any optional companion mods directly from their upstream Thunderstore/GitHub releases below.)*
 
 ---
 
 ## Companion Community Mods & Upstream Inspiration
 
-Install these upstream packages from Thunderstore / GitHub if you want companion QoL features (all detected and integrated cleanly by `RogueTowerModMenu`):
+Optional upstream packages on Thunderstore / GitHub (supported cleanly by `RogueTowerModMenu`'s module bridge -- note that `RogueTowerQoL` already bundles non-cheat QoL, Levels-to-RPM, Pause/WASD fixes, and `RogueTowerQuickTree` already bundles Upgrade Refunds natively):
 - **BepInEx Pack (Required):** `bbepis-BepInEx_Rogue_Tower-5.4.1900` ([Thunderstore](https://thunderstore.io/c/rogue-tower/))
-- **Dark Mode UI (`Jdewi-DarkMode`) / Custom Light & Dark Themes:** `RogueTowerThemes` adds customizable non-destructive Light/Dark modes; companion `Jdewi-DarkMode` is also supported.
-- **Game Speed Controls & Clean-Room QoL:** [`Jdewi-SpeedControls`], `RogueTowerQoL` (standalone clean-room MIT suite), plus companion [`TheirOwn/QoLChanges`](https://github.com/TheirOwn/QoLChanges), `RustyDios-QoLChangesPastePatch`, `afld-LevelsToRpm`, `RustyDios-WASDRemover`
-- **Card Trees & Banishing:** [`agustinbutrico/BanishCards`](https://github.com/agustinbutrico/BanishCards), [`agustinbutrico/UpgradesMenu`](https://github.com/agustinbutrico/UpgradesMenu), [`agustinbutrico/CardDataLib`](https://github.com/agustinbutrico/CardDataLib), `CardRenderer`
-- **Refund Upgrades:** [`SCLeoX/RogueTower-RefundUpgrades`](https://github.com/SCLeoX/RogueTower-RefundUpgrades)
+- **Light & Dark Themes:** `RogueTowerThemes` (customizable Light/Dark presets); optional legacy `Jdewi-DarkMode`
+- **QoL & Game Speed:** `RogueTowerQoL` (hotbar sorter, `+10` hold upgrades, `90 deg`/Top-Down/X-Ray, range rings, priority tinting/sync, `+7%/lvl` RPM, pause/build), `Jdewi-SpeedControls`, plus optional legacy [`TheirOwn/QoLChanges`](https://github.com/TheirOwn/QoLChanges), `RustyDios-QoLChangesPastePatch`, `afld-LevelsToRpm`, `RustyDios-WASDRemover`
+- **Card Trees & Refunds:** `RogueTowerQuickTree` (includes single/branch/tree/all refunds natively), [`agustinbutrico/BanishCards`](https://github.com/agustinbutrico/BanishCards), [`agustinbutrico/UpgradesMenu`](https://github.com/agustinbutrico/UpgradesMenu), [`agustinbutrico/CardDataLib`](https://github.com/agustinbutrico/CardDataLib), `CardRenderer`, optional [`SCLeoX/RogueTower-RefundUpgrades`](https://github.com/SCLeoX/RogueTower-RefundUpgrades)
 - **Disable Triumphs / Slot Keybinds / Inspector:** [`harbingerofme/RogueTowerMods`](https://github.com/harbingerofme/RogueTowerMods), [`daymxn/RogueTower-SlotKeybinds`](https://github.com/daymxn/RogueTower-SlotKeybinds), `sinai-dev-UnityExplorer`
 - **Community & Price-Scaling Inspiration:** Steam Discussions (`app/1843760`) and `SashaFloats` (`TowerFlyweight` research on UnknownCheats)
 
@@ -38,7 +39,9 @@ Install these upstream packages from Thunderstore / GitHub if you want companion
 ## Installing Compiled Mods
 1. Install **BepInEx 5** for Rogue Tower (`bbepis-BepInEx_Rogue_Tower-5.4.1900`).
 2. Copy each mod's `plugins/<Mod>.dll` from `./mods/<group>/<Mod>/plugins/` into `Rogue Tower/BepInEx/plugins/<Mod>/`.
-3. Launch **Rogue Tower** and press `` ` `` (or `F6`) to open the **Mod Menu** (`F7` toggles **Dark <-> Light** theme!).
+3. Launch **Rogue Tower**:
+   - Play **vanilla/legitimate with great QoL**: install `RogueTowerQoL`, `RogueTowerLagFix`, `RogueTowerQuickTree`, `RogueTowerThemes`, and `RogueTowerCustomMaps`.
+   - Play **Sandbox / Cheats / FPS Profiling**: also include `RogueTowerModMenu` (`RogueTowerCustomLevels.dll`) and press `` ` `` (`BackQuote`).
 
 ## Building from Source
 1. Ensure Rogue Tower + BepInEx 5 are installed at the default Steam path (or set `ROGUE_TOWER_DIR` to your install folder).

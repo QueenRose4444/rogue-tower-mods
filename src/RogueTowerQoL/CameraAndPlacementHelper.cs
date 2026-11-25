@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
-namespace RogueTowerCustomLevels;
+namespace RogueTowerQoL;
 
 internal static class CameraAndPlacementPatches
 {
@@ -14,8 +15,6 @@ internal static class CameraAndPlacementPatches
 		typeof(BuildingManager).GetMethod("DisplayGhost", BindingFlags.Instance | BindingFlags.NonPublic);
 	private static readonly AccessTools.FieldRef<UIManager, LayerMask> ClickableMaskRef =
 		AccessTools.FieldRefAccess<UIManager, LayerMask>("clickableMask");
-	private static readonly AccessTools.FieldRef<UIManager, GameObject> CurrentUIRef =
-		AccessTools.FieldRefAccess<UIManager, GameObject>("currentUI");
 
 	[HarmonyPatch(typeof(CameraController), "Start")]
 	[HarmonyPostfix]
@@ -62,7 +61,6 @@ internal static class CameraAndPlacementPatches
 			{
 				continue;
 			}
-			// Ignore vertical cliff faces; only place on horizontal grass tile tops
 			if (hit.normal.y < 0.75f)
 			{
 				continue;
@@ -93,7 +91,6 @@ internal static class CameraAndPlacementPatches
 			return;
 		}
 
-		// When holding LeftAlt over overlapping elevated + lower tiles, pick the deeper tile behind the foreground cliff
 		Vector3 chosen = (altHeld && validPositions.Count > 1) ? validPositions[1] : validPositions[0];
 		string text = chosen.y > 0.34f ? ("+" + (Mathf.RoundToInt(chosen.y * 3f) - 1)) : string.Empty;
 		DisplayGhostMethod?.Invoke(__instance, new object[] { chosen, text });
@@ -124,7 +121,10 @@ internal static class CameraAndPlacementPatches
 		{
 			return true;
 		}
-		if (BuildingManager.instance.buildMode || ModMenuUI.IsPointerOverMenu || QuickHudManager.IsPointerOverQuickButton())
+		if (BuildingManager.instance.buildMode ||
+			QuickHudManager.IsPointerOverQuickButton() ||
+			HotbarSortOverlayUI.IsPointerOverOverlay ||
+			(EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()))
 		{
 			return true;
 		}
@@ -175,7 +175,6 @@ internal static class CameraAndPlacementHelper
 	private static Quaternion _defaultHolderLocalRot = Quaternion.identity;
 	private static bool _capturedHolderRot;
 
-	// Alt-cutaway tower scaling cache
 	private static bool _cutawayActive;
 	private static readonly Dictionary<Transform, Vector3> SavedChildScales = new Dictionary<Transform, Vector3>();
 
@@ -241,7 +240,7 @@ internal static class CameraAndPlacementHelper
 			return;
 		}
 
-		bool typing = ModMenuUI.IsSearchFocused;
+		bool typing = Plugin.IsTypingInInputField();
 		if (!typing && Plugin.EnableCameraRotation.Value)
 		{
 			if (Input.GetKeyDown(Plugin.RotateLeftKey.Value))

@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-namespace RogueTowerCustomLevels;
+namespace RogueTowerQoL;
 
 internal enum TowerStatKind
 {
@@ -28,7 +28,6 @@ internal static class TowerFastUpgradePatches
 		{
 			return;
 		}
-		// Skip QoLChanges hover-only range circles where UI child panels are disabled
 		Text hText = HealthXPTextRef(__instance);
 		if (hText == null || !hText.gameObject.activeInHierarchy)
 		{
@@ -61,7 +60,7 @@ internal static class TowerFastUpgradePatches
 	[HarmonyPrefix]
 	private static bool TowerUI_Update_Prefix(TowerUI __instance)
 	{
-		if (ModMenuUI.IsSearchFocused)
+		if (Plugin.IsTypingInInputField())
 		{
 			return false;
 		}
@@ -188,10 +187,6 @@ internal static class TowerUpgradeHelper
 		{
 			return false;
 		}
-		if (Plugin.InfiniteMoney.Value)
-		{
-			return true;
-		}
 		return ResourceManager.instance.CheckMoney(GetNextSingleCost(tower, kind));
 	}
 
@@ -317,7 +312,6 @@ internal sealed class TowerFastUpgradeController : MonoBehaviour
 
 	private bool _initialized;
 
-	// Keyboard hold states for Alpha1/2/3
 	private readonly float[] _keyHoldElapsed = new float[3];
 	private readonly float[] _keyRepeatTimer = new float[3];
 
@@ -427,7 +421,6 @@ internal sealed class TowerFastUpgradeController : MonoBehaviour
 		snapRt.sizeDelta = new Vector2(panelWidth, upgradePanelRt.sizeDelta.y);
 		snapRt.anchoredPosition = new Vector2(rightEdgeX + 8f, centerY);
 
-		// Add "+10" header aligned with the vanilla "Cost" header
 		Text costSample = HealthXPTextRef(_towerUI);
 		Text headerSample = FindHeaderText(upgradePanelRt, "Cost") ?? FindHeaderText(upgradePanelRt, "Upgrade");
 		GameObject hdrObj = new GameObject("Snap10Header", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
@@ -477,7 +470,6 @@ internal sealed class TowerFastUpgradeController : MonoBehaviour
 		GameObject clone = Instantiate(rowSourceBtn.gameObject, snapPanelRt);
 		clone.name = $"Snap10_{kind}";
 
-		// Strip any child XP fill bar images/extra handlers so only the button face & label remain
 		for (int i = clone.transform.childCount - 1; i >= 0; i--)
 		{
 			Transform child = clone.transform.GetChild(i);
@@ -629,7 +621,6 @@ internal sealed class TowerFastUpgradeController : MonoBehaviour
 
 		if (down)
 		{
-			// Initial press is handled by vanilla TowerUI.Update (or our Shift Prefix)
 			_keyHoldElapsed[idx] = 0f;
 			_keyRepeatTimer[idx] = 0f;
 			return;

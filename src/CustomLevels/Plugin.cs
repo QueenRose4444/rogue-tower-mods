@@ -9,21 +9,14 @@ using UnityEngine.SceneManagement;
 
 [assembly: AssemblyCompany("RogueTowerModMenu")]
 [assembly: AssemblyConfiguration("Release")]
-[assembly: AssemblyDescription("Mod Menu (`), Cheats, Tower Loadouts & Hotbar Sorter, Camera Rotation/X-Ray, Tower Hold/+10 Fast Upgrades, Quick Chests/Trees, Endgame Benchmark Scenes, Deep Lag Profiler, and Focusless Test Harness for Rogue Tower.")]
-[assembly: AssemblyFileVersion("2.4.0.0")]
-[assembly: AssemblyInformationalVersion("2.4.0")]
+[assembly: AssemblyDescription("Cheat Mod Menu (` / F6) for Rogue Tower: sandbox cheats, Give/Lock Towers & 5 Saved Loadouts, Give Cards & Card Trees, Live Modules Dashboard, Endgame Level-40 Benchmark Scenes & DeepLagProfiler, and loopback test harness. Non-cheat QoL lives in RogueTowerQoL.")]
+[assembly: AssemblyFileVersion("2.5.0.0")]
+[assembly: AssemblyInformationalVersion("2.5.0")]
 [assembly: AssemblyProduct("RogueTowerModMenu")]
 [assembly: AssemblyTitle("RogueTowerQuickChests")]
-[assembly: AssemblyVersion("2.4.0.0")]
+[assembly: AssemblyVersion("2.5.0.0")]
 
 namespace RogueTowerCustomLevels;
-
-public enum ChestHandlingMode
-{
-	Off = 0,
-	PopupButton = 1,
-	AutoOpenImmediately = 2
-}
 
 [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
 [BepInDependency("AgusBut.CardDataLib", BepInDependency.DependencyFlags.SoftDependency)]
@@ -38,7 +31,7 @@ public class Plugin : BaseUnityPlugin
 {
 	public const string PluginGuid = "Rosie.RogueTowerCustomLevels";
 	public const string PluginName = "RogueTowerQuickChests";
-	public const string PluginVersion = "2.4.0";
+	public const string PluginVersion = "2.5.0";
 
 	internal static ManualLogSource Log;
 
@@ -61,7 +54,7 @@ public class Plugin : BaseUnityPlugin
 	internal static ConfigEntry<bool> IncludeUnresearchedCards;
 	internal static ConfigEntry<bool> LegacyCheatModeEnabled;
 
-	// Hotbar & Loadouts
+	// Saved Cheat Loadouts & Standalone Hotbar Order Fallback
 	internal static ConfigEntry<bool> AutoSortHotbar;
 	internal static ConfigEntry<string> TowerHotbarOrder;
 	internal static ConfigEntry<string> BuildingHotbarOrder;
@@ -72,25 +65,6 @@ public class Plugin : BaseUnityPlugin
 	internal static ConfigEntry<string> LoadoutSlot3;
 	internal static ConfigEntry<string> LoadoutSlot4;
 	internal static ConfigEntry<string> LoadoutSlot5;
-
-	// Camera & Placement
-	internal static ConfigEntry<bool> EnableCameraRotation;
-	internal static ConfigEntry<KeyCode> RotateLeftKey;
-	internal static ConfigEntry<KeyCode> RotateRightKey;
-	internal static ConfigEntry<KeyCode> TopDownToggleKey;
-	internal static ConfigEntry<bool> AutoTopDownInBuildMode;
-	internal static ConfigEntry<bool> EnableXRayPlacement;
-	internal static ConfigEntry<bool> EnableAltCutaway;
-
-	// Tower Fast Upgrade (+10 Snap & Hold)
-	internal static ConfigEntry<bool> EnableTowerFastUpgrade;
-	internal static ConfigEntry<float> HoldInitialDelay;
-	internal static ConfigEntry<int> HoldRepeatSpeed;
-
-	// Quick HUD & Wave Control
-	internal static ConfigEntry<ChestHandlingMode> ChestMode;
-	internal static ConfigEntry<bool> ShowChopAllTreesButton;
-	internal static ConfigEntry<bool> AllowEarlyExpand;
 
 	// Focusless Test Harness (127.0.0.1)
 	internal static ConfigEntry<bool> EnableTestServer;
@@ -131,32 +105,16 @@ public class Plugin : BaseUnityPlugin
 			Config.Save();
 		}
 
-		AutoSortHotbar = Config.Bind("Hotbar & Loadouts", "AutoSortHotbar", true, "Automatically orders Row 1 (Towers) and Row 2 (Buildings) on the build hotbar according to your custom order.");
-		TowerHotbarOrder = Config.Bind("Hotbar & Loadouts", "TowerHotbarOrder", HotbarAndLoadoutManager.DefaultTowerOrderCsv, "Comma-separated custom order for Row 1 Towers on the build hotbar.");
-		BuildingHotbarOrder = Config.Bind("Hotbar & Loadouts", "BuildingHotbarOrder", HotbarAndLoadoutManager.DefaultBuildingOrderCsv, "Comma-separated custom order for Row 2 Buildings on the build hotbar.");
-		AutoApplyLoadoutSlot = Config.Bind("Hotbar & Loadouts", "AutoApplyLoadoutSlot", 0, "0 = Off, 1..5 = automatically apply that saved loadout at the start of every run.");
-		LockCardPoolToHotbar = Config.Bind("Hotbar & Loadouts", "LockCardPoolToHotbar", false, "When true, filters random card draws so you only draw upgrades for towers/buildings currently unlocked on your hotbar.");
+		AutoSortHotbar = Config.Bind("Hotbar & Loadouts", "AutoSortHotbar", true, "Standalone fallback if RogueTowerQoL is not installed. When RogueTowerQoL is loaded, hotbar sorting uses RogueTowerQoL's order.");
+		TowerHotbarOrder = Config.Bind("Hotbar & Loadouts", "TowerHotbarOrder", HotbarAndLoadoutManager.DefaultTowerOrderCsv, "Fallback Row 1 Tower order when RogueTowerQoL is not installed.");
+		BuildingHotbarOrder = Config.Bind("Hotbar & Loadouts", "BuildingHotbarOrder", HotbarAndLoadoutManager.DefaultBuildingOrderCsv, "Fallback Row 2 Building order when RogueTowerQoL is not installed.");
+		AutoApplyLoadoutSlot = Config.Bind("Hotbar & Loadouts", "AutoApplyLoadoutSlot", 0, "0 = Off, 1..5 = automatically grant that saved cheat loadout at the start of every run.");
+		LockCardPoolToHotbar = Config.Bind("Hotbar & Loadouts", "LockCardPoolToHotbar", false, "Cheat filter: restricts random card draws so you only draw upgrades for towers/buildings currently unlocked on your hotbar.");
 		LoadoutSlot1 = Config.Bind("Hotbar & Loadouts", "LoadoutSlot1", "Ballista,Mortar,FlameThrower,PoisonSprayer,FrostKeep,TeslaCoil,Shredder,Lookout|ManaSiphon,ManaBank,HauntedHouse", "Saved Loadout Slot 1 (Towers|Buildings).");
 		LoadoutSlot2 = Config.Bind("Hotbar & Loadouts", "LoadoutSlot2", "Ballista,Mortar,Lookout,Radar,Obelisk,ParticleCannon|ManaSiphon,ManaBank,University", "Saved Loadout Slot 2 (Towers|Buildings).");
 		LoadoutSlot3 = Config.Bind("Hotbar & Loadouts", "LoadoutSlot3", "", "Saved Loadout Slot 3 (Towers|Buildings).");
 		LoadoutSlot4 = Config.Bind("Hotbar & Loadouts", "LoadoutSlot4", "", "Saved Loadout Slot 4 (Towers|Buildings).");
 		LoadoutSlot5 = Config.Bind("Hotbar & Loadouts", "LoadoutSlot5", "", "Saved Loadout Slot 5 (Towers|Buildings).");
-
-		EnableCameraRotation = Config.Bind("Camera & Placement", "EnableCameraRotation", true, "Enables [ and ] hotkeys (and header buttons) to rotate the camera in 90-degree steps.");
-		RotateLeftKey = Config.Bind("Camera & Placement", "RotateLeftKey", KeyCode.LeftBracket, "Rotate camera 90 degrees counter-clockwise.");
-		RotateRightKey = Config.Bind("Camera & Placement", "RotateRightKey", KeyCode.RightBracket, "Rotate camera 90 degrees clockwise.");
-		TopDownToggleKey = Config.Bind("Camera & Placement", "TopDownToggleKey", KeyCode.V, "Toggle straight top-down tactical view (ignored when Ctrl is held for Ctrl+V paste).");
-		AutoTopDownInBuildMode = Config.Bind("Camera & Placement", "AutoTopDownInBuildMode", false, "Automatically tilt to top-down view while placing a tower.");
-		EnableXRayPlacement = Config.Bind("Camera & Placement", "EnableXRayPlacement", true, "Allows placing towers on valid grass tiles hidden behind foreground cliffs or towers.");
-		EnableAltCutaway = Config.Bind("Camera & Placement", "EnableAltCutaway", true, "Hold LeftAlt to flatten tall tower meshes and select towers hidden behind cliffs/towers.");
-
-		EnableTowerFastUpgrade = Config.Bind("Tower Fast Upgrade", "EnableTowerFastUpgrade", true, "Enables holding upgrade buttons/1-2-3 keys to rapidly buy levels and adds a +10 Snap panel next to Tower upgrades.");
-		HoldInitialDelay = Config.Bind("Tower Fast Upgrade", "HoldInitialDelay", 0.26f, "Seconds before holding an upgrade button starts auto-repeating.");
-		HoldRepeatSpeed = Config.Bind("Tower Fast Upgrade", "HoldRepeatSpeed", 1, "Hold-to-buy repeat speed: 0 = Normal, 1 = Fast, 2 = Turbo.");
-
-		ChestMode = Config.Bind("Treasure Chests", "ChestMode", ChestHandlingMode.PopupButton, "PopupButton = shows 'Open Chests' beside Tower HP. AutoOpenImmediately = auto-claims. Off = vanilla.");
-		ShowChopAllTreesButton = Config.Bind("Trees", "ShowChopAllTreesButton", true, "Shows 'Chop Trees' beside Tower HP whenever unchopped trees are on the map.");
-		AllowEarlyExpand = Config.Bind("Wave Control", "AllowEarlyExpand", true, "Allows expanding to the next tile to start the next wave before the current wave ends.");
 
 		EnableTestServer = Config.Bind("Test Harness", "EnableTestServer", true, "Enables the focusless loopback-only (127.0.0.1) HTTP test & FPS harness.");
 		TestServerPort = Config.Bind("Test Harness", "TestServerPort", 18437, "Loopback port for the test harness (never 8080).");
@@ -169,11 +127,8 @@ public class Plugin : BaseUnityPlugin
 		SceneManager.activeSceneChanged += OnActiveSceneChanged;
 
 		_harmony = new Harmony(PluginGuid);
-		_harmony.PatchAll(typeof(QuickHudPatches));
 		_harmony.PatchAll(typeof(CheatPatches));
 		_harmony.PatchAll(typeof(HotbarLoadoutPatches));
-		_harmony.PatchAll(typeof(CameraAndPlacementPatches));
-		_harmony.PatchAll(typeof(TowerFastUpgradePatches));
 		_harmony.PatchAll(typeof(InputBlockerPatches));
 		DeepLagProfiler.Initialize(_harmony);
 
@@ -184,7 +139,7 @@ public class Plugin : BaseUnityPlugin
 
 		TestHarnessServer.Initialize(this);
 
-		Log.LogInfo($"{PluginName} / ModMenu v{PluginVersion} loaded!");
+		Log.LogInfo($"{PluginName} / ModMenu v{PluginVersion} loaded (CleanQoL={(ModuleBridge.HasCleanQoL ? "active" : "fallback")}).");
 	}
 
 	private void OnDestroy()
@@ -198,8 +153,6 @@ public class Plugin : BaseUnityPlugin
 	{
 		CheatActions.OnSceneChanged(newScene.name);
 		HotbarAndLoadoutManager.OnSceneChanged();
-		CameraAndPlacementHelper.OnSceneChanged();
-		QuickHudManager.OnSceneChanged();
 		ModMenuUI.OnSceneChanged(newScene.name);
 		ModuleBridge.SyncBanishOverride(InfiniteBanishes.Value);
 	}
@@ -219,9 +172,7 @@ public class Plugin : BaseUnityPlugin
 			AudioListener.volume = 0f;
 		}
 
-		QuickHudManager.Tick();
 		CheatActions.Tick();
-		CameraAndPlacementHelper.Tick();
 		ModMenuUI.Tick();
 		BenchmarkSceneRunner.TickFrameSample();
 		TestHarnessServer.Tick();

@@ -2,7 +2,7 @@
     "name":  "RogueTowerQuickTree",
     "version_number":  "1.4.0",
     "website_url":  "https://github.com/QueenRose4444/rogue-tower-mods",
-    "description":  "One-click Research Tree Buy/Refund buttons, Shift/Ctrl deep subtree purchasing, cascade refund guards, and live Mod Menu Auto-Max card controls. Created by Rose with Gemini \u0026 Claude.",
+    "description":  "All-in-one Research Tree Buy + Bundled Native Upgrade Refunding mod: single-click, Right-Click, branch, full-tree, \u0026 Refund All XP refunds (no separate Refund mod needed!), one-click Buy Tree, Shift/Ctrl chain buying, vanilla armor unlockString bug fixes, and in-run Auto-Max Branch. 100% AI-generated (Google Gemini \u0026 Anthropic Claude), designed by Rose.",
     "dependencies":  [
                          "bbepis-BepInEx_Rogue_Tower-5.4.1900"
                      ]

@@ -1,8 +1,8 @@
 {
     "name":  "RogueTowerModMenu",
-    "version_number":  "2.4.0",
+    "version_number":  "2.5.0",
     "website_url":  "https://github.com/QueenRose4444/rogue-tower-mods",
-    "description":  "Unified live Mod Menu (` / F6), Quick HUD (F10), tower/building loadouts \u0026 hotbar sorting, hold/+10 tower upgrades, 90-deg/top-down/X-ray placement, sandbox cheats, Round 40/45 Level-40 benchmark scenes + per-frame stall profiler, and loopback test harness. Created by Rose with Gemini \u0026 Claude.",
+    "description":  "Cheat \u0026 sandbox Mod Menu (`), saved tower loadouts \u0026 unlock grants, card/tree spawners, live companion module controls, Round 40/45 Level-40 FPS benchmark scenes, per-frame stall profiler, and loopback test harness. 100% AI-generated (Google Gemini \u0026 Anthropic Claude), designed by Rose.",
     "dependencies":  [
                          "bbepis-BepInEx_Rogue_Tower-5.4.1900"
                      ]

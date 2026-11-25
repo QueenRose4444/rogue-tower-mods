@@ -1,17 +1,23 @@
-# RogueTowerModMenu (v2.4.0)
+# RogueTowerModMenu (v2.5.0)
 
-Unified live Mod Menu (` / F6), Quick HUD (F10), tower/building loadouts & hotbar sorting, hold/+10 tower upgrades, 90-deg/top-down/X-ray placement, sandbox cheats, Round 40/45 Level-40 benchmark scenes + per-frame stall profiler, and loopback test harness. Created by Rose with Gemini & Claude.
+Cheat & sandbox Mod Menu (`), saved tower loadouts & unlock grants, card/tree spawners, live companion module controls, Round 40/45 Level-40 FPS benchmark scenes, per-frame stall profiler, and loopback test harness. 100% AI-generated (Google Gemini & Anthropic Claude), designed by Rose.
 
-> **AI Collaboration Notice**
-> Created by **Rose** with AI assistance using **Google Gemini** and **Anthropic Claude** models.
+> **100% AI-Generated Code & Docs Notice**
+> Every line of code and documentation in this mod was **100% written by AI** (**Google Gemini** and **Anthropic Claude** models), directed and designed by **Rose**.
 
 ## Features
-- Unified tabbed Mod Menu (`` ` `` / `BackQuote` or `F6`) + draggable Quick HUD (`F10`) + header `Theme` switch.
-- **Towers & Loadouts Tab:** Lock/unlock all 15 Row 1 Towers (including Ballista) & 5 Row 2 Buildings, reorder hotbar slots (`Up`/`Dn`), save/apply/auto-apply 5 loadouts, and optionally lock card draws to your hotbar.
-- **Camera & Occluded Placement:** `90 deg` camera rotation (`[` / `]`), Top-Down tactical view (`V`), X-ray build raycasting behind cliffs/tall towers, and `LeftAlt` tower cutaway + deep selection.
-- **Tower Upgrade UX:** Hold Health/Armor/Shield buttons to auto-buy continuously, or click/hold `+10` Snap to jump to the next multiple of 10.
-- **Sandbox Cheats:** Infinite Money/Mana/Range, God Mode, **No Tower Price Scaling**, Give Tower / Give Cards / Give Card Trees, Multipliers.
-- **Endgame Benchmark Scenes & Deep Lag Profiler:** 5 preset Round 40/45 Level-40 stress scenes (up to **300 Towers -- 20 of every tower + Max Trees + Inf Range @ 8x Speed**), per-frame hang/spike culprit attribution, visuals vs FPS matrix, and `127.0.0.1:18437` focusless CLI harness.
+- **Cheats Tab:** Infinite Gold, Infinite Mana, Infinite Tower Range (`250` global coverage + `Dropper` waypoint optimization), God Mode (0 damage taken), **No Tower Price Scaling** (flat base gold price for every copy built), Infinite Card Banishes, Include Unresearched Cards toggle, Tower Damage Multiplier (`1x`..`100x`), Tower Fire Rate Multiplier (`1x`..`5x`), plus instant resource grants (`+1k/+10k/+100k Gold`, `Fill/+100/+10/s Mana`, `Repair/+10/+50 HP`, `+1k/+25k/+100k Meta XP`, `Draw 3 Cards`, `Kill All Enemies`, `Upgrade All Placed Towers +10`).
+- **Towers & Loadouts Tab (Cheats/Sandbox):** Unlock or lock all **15 Row 1 Towers** (including Ballista) & **5 Row 2 Buildings** individually on the hotbar, save & apply **5 Custom Loadout Slots**, optionally **Auto-Apply a Loadout at Run Start**, and optionally **Lock Card Pool to Hotbar** (filter random card draws to unlocked hotbar towers only). *(Hotbar slot ordering itself lives in `RogueTowerQoL` as a non-cheat QoL feature, and `ModMenu` syncs cleanly with it when both are installed.)*
+- **Cards & Card Trees Tabs:** Searchable catalog of every card in the game (including `CardDataLib` / unresearched cards), one-click `Give` single card, `Give Branch` sub-branch, or `Give Tree` / `Give ALL Tower/DOT/Non-Monster Trees`, synced with `UpgradesMenu` if installed.
+- **Modules & Benchmark Dashboard:** Toggle and configure installed mods live (`RogueTowerQoL`, `RogueTowerThemes`, `RogueTowerLagFix`, `RogueTowerQuickTree`, `RogueTowerCustomMaps`, `SpeedControls`, `BanishCards`, `DisableProgression`), cycle Dark/Light themes from the header, and launch **5 Round 40/45 Level-40 FPS Benchmark Scenes** (up to **300 Level-40 Towers -- 20 of each tower + Max Card Trees + Infinite Range @ 8x Speed**) backed by **DeepLagProfiler** (13 Harmony `Stopwatch` buckets, entity/particle census, GC counts, and Worst-5 frame hitch culprit attribution) plus a focusless `127.0.0.1:18437` CLI test harness.
+
+## Keybinds & Controls
+- `` ` `` (BackQuote): Toggle Mod Menu open/closed (`Esc` closes when open; top-right `Mods (`)` pill also toggles).
+- Header buttons: `<90` / `90>` / `Top` (via `RogueTowerQoL`), `Theme` (`Vanilla / Dark / Light` via `RogueTowerThemes`), `Pause / Resume` (`SpeedControls`).
+
+## What We Changed / Improved Over Upstream Inspiration
+- Separated all **non-cheat QoL features** (Hotbar Sorting, Tower Hold / `+10` Fast Upgrades, `90 deg` Camera Rotation / Top-Down / X-Ray Placement, Open Chests / Chop Trees HUD, Early Wave Expand) cleanly into **`RogueTowerQoL` v2.0.0** so players who want pure vanilla balance with great UX do not need cheats installed.
+- Added per-frame worst-spike profiler (`DeepLagProfiler`), Level-40 (`+13/+13/+13`) uniform stress presets, and zero-CLI-arg Steam-popup-free headless test tooling (`127.0.0.1:18437`).
 
 ## Source Code
 - Visual C# project: [`src/CustomLevels/`](../../../src/CustomLevels/)
@@ -25,4 +31,4 @@ Unified live Mod Menu (` / F6), Quick HUD (F10), tower/building loadouts & hotba
 2. Copy `plugins/RogueTowerCustomLevels.dll` into `Rogue Tower/BepInEx/plugins/RogueTowerModMenu/`.
 
 ## Credits & Inspiration
-- Original suite by **Rose**, inspired by the Rogue Tower Steam Discussions & Thunderstore communities (`app/1843760`) and `SashaFloats` (UnknownCheats `TowerFlyweight` price-scaling research that inspired No Tower Price Scaling).
+- Clean-room suite designed by **Rose**, inspired by the Rogue Tower Steam Discussions & Thunderstore communities (`app/1843760`) and `SashaFloats` (`TowerFlyweight` research on UnknownCheats that inspired No Tower Price Scaling).

@@ -491,15 +491,30 @@ internal static class TestHarnessServer
 			{
 				float deg = 90f;
 				if (cmd.Params.TryGetValue("deg", out string dStr)) float.TryParse(dStr, NumberStyles.Float, CultureInfo.InvariantCulture, out deg);
-				CameraAndPlacementHelper.RotateBy(deg);
-				cmd.ResponseJson = $"{{\"ok\":true,\"targetYaw\":{CameraAndPlacementHelper.CurrentYawOffset.ToString("0.#", CultureInfo.InvariantCulture)}}}";
+				ModuleBridge.RotateCameraBy(deg);
+				cmd.ResponseJson = $"{{\"ok\":true,\"targetYaw\":{ModuleBridge.GetCameraYaw().ToString("0.#", CultureInfo.InvariantCulture)}}}";
 				break;
 			}
 
 			case "toggle_topdown":
-				CameraAndPlacementHelper.ToggleTopDown();
-				cmd.ResponseJson = $"{{\"ok\":true,\"topDown\":{(CameraAndPlacementHelper.IsTopDown ? "true" : "false")}}}";
+				ModuleBridge.ToggleTopDown();
+				cmd.ResponseJson = $"{{\"ok\":true,\"topDown\":{(ModuleBridge.IsTopDownActive() ? "true" : "false")}}}";
 				break;
+
+			case "open_hotbar_sort":
+			{
+				bool open = !cmd.Params.TryGetValue("open", out string oStr) || !string.Equals(oStr, "false", StringComparison.OrdinalIgnoreCase);
+				bool ok = ModuleBridge.SetQoLHotbarSortOpen(open);
+				cmd.ResponseJson = $"{{\"ok\":{(ok ? "true" : "false")},\"open\":{(open ? "true" : "false")}}}";
+				break;
+			}
+
+			case "open_map_editor":
+			{
+				bool ok = ModuleBridge.OpenCustomMapEditor();
+				cmd.ResponseJson = $"{{\"ok\":{(ok ? "true" : "false")}}}";
+				break;
+			}
 
 			case "click_button":
 			{
@@ -596,7 +611,13 @@ internal static class TestHarnessServer
 					OptionsMenu.instance.showDamageNumbers = dmgNums;
 					OptionsMenu.instance.extraProjectileEffects = extraFx;
 				}
-				if (ModuleBridge.IsLoaded(ModuleBridge.Keys.QoL))
+				if (ModuleBridge.HasCleanQoL)
+				{
+					bool qolCircles = key != "minimal_fx";
+					ModuleBridge.SetConfig(ModuleBridge.Keys.CleanQoL, "1. Range Circles", "EnableHoverRange", qolCircles);
+					ModuleBridge.SetConfig(ModuleBridge.Keys.CleanQoL, "2. Targeting Priorities", "EnablePriorityColors", qolCircles);
+				}
+				else if (ModuleBridge.IsLoaded(ModuleBridge.Keys.QoL))
 				{
 					bool qolCircles = key != "minimal_fx";
 					ModuleBridge.SetConfig(ModuleBridge.Keys.QoL, "General", "EnableHoverRangeCircle", qolCircles);
@@ -773,8 +794,8 @@ internal static class TestHarnessServer
 			JsonStr(ModuleBridge.GetThemeModeName()),
 			ModMenuUI.IsMenuOpen ? "true" : "false",
 			ModMenuUI.CurrentTabIndex,
-			CameraAndPlacementHelper.CurrentYawOffset,
-			CameraAndPlacementHelper.IsTopDown ? "true" : "false",
+			ModuleBridge.GetCameraYaw(),
+			ModuleBridge.IsTopDownActive() ? "true" : "false",
 			JsonStringArray(hotbarTowers),
 			JsonStringArray(hotbarBlds),
 			errorsJson);

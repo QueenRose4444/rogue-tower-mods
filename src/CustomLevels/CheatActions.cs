@@ -590,6 +590,71 @@ internal static class CheatActions
 		return killed;
 	}
 
+	private static readonly AccessTools.FieldRef<Tower, int> LevelRef =
+		AccessTools.FieldRefAccess<Tower, int>("<level>k__BackingField");
+	private static readonly AccessTools.FieldRef<Tower, int> DamageUpgradeRef =
+		AccessTools.FieldRefAccess<Tower, int>("damageUpgrade");
+	private static readonly AccessTools.FieldRef<Tower, int> HealthDamageUpgradeRef =
+		AccessTools.FieldRefAccess<Tower, int>("healthDamageUpgrade");
+	private static readonly AccessTools.FieldRef<Tower, int> ArmorDamageUpgradeRef =
+		AccessTools.FieldRefAccess<Tower, int>("armorDamageUpgrade");
+	private static readonly AccessTools.FieldRef<Tower, int> ShieldDamageUpgradeRef =
+		AccessTools.FieldRefAccess<Tower, int>("shieldDamageUpgrade");
+	private static readonly AccessTools.FieldRef<Tower, float> HealthXPRef =
+		AccessTools.FieldRefAccess<Tower, float>("<healthXP>k__BackingField");
+	private static readonly AccessTools.FieldRef<Tower, float> ArmorXPRef =
+		AccessTools.FieldRefAccess<Tower, float>("<armorXP>k__BackingField");
+	private static readonly AccessTools.FieldRef<Tower, float> ShieldXPRef =
+		AccessTools.FieldRefAccess<Tower, float>("<shieldXP>k__BackingField");
+
+	private static int UpgradeTowerStatLevels(Tower tower, int statKind, int levels, bool freeGrant)
+	{
+		if (tower == null || levels <= 0) return 0;
+		int mult = Mathf.Max(1, tower.upgradeCostMultiplier);
+		int bought = 0;
+
+		for (int i = 0; i < levels; i++)
+		{
+			int lvl = LevelRef(tower);
+			float curXp = statKind switch
+			{
+				0 => HealthXPRef(tower),
+				1 => ArmorXPRef(tower),
+				_ => ShieldXPRef(tower)
+			};
+
+			int cost = (10 * lvl - (int)curXp) * mult;
+			if (!freeGrant)
+			{
+				if (ResourceManager.instance == null || !ResourceManager.instance.CheckMoney(cost)) break;
+				ResourceManager.instance.Spend(cost);
+				DamageTracker.instance?.AddCost(tower.towerType, cost);
+			}
+
+			float xpSub = 10 * lvl - cost / mult;
+			switch (statKind)
+			{
+				case 0:
+					HealthXPRef(tower) -= xpSub;
+					HealthDamageUpgradeRef(tower)++;
+					break;
+				case 1:
+					ArmorXPRef(tower) -= xpSub;
+					ArmorDamageUpgradeRef(tower)++;
+					break;
+				default:
+					ShieldXPRef(tower) -= xpSub;
+					ShieldDamageUpgradeRef(tower)++;
+					break;
+			}
+
+			LevelRef(tower) = lvl + 1;
+			DamageUpgradeRef(tower)++;
+			bought++;
+		}
+		return bought;
+	}
+
 	internal static int UpgradeAllPlacedTowers(int levelsPerStat = 10)
 	{
 		Tower[] towers = UnityEngine.Object.FindObjectsOfType<Tower>();
@@ -605,13 +670,19 @@ internal static class CheatActions
 			{
 				continue;
 			}
-			int h = TowerUpgradeHelper.BuyLevels(t, TowerStatKind.Health, levelsPerStat, null, freeGrant: free);
-			int a = TowerUpgradeHelper.BuyLevels(t, TowerStatKind.Armor, levelsPerStat, null, freeGrant: free);
-			int s = TowerUpgradeHelper.BuyLevels(t, TowerStatKind.Shield, levelsPerStat, null, freeGrant: free);
+			int h = UpgradeTowerStatLevels(t, 0, levelsPerStat, free);
+			int a = UpgradeTowerStatLevels(t, 1, levelsPerStat, free);
+			int s = UpgradeTowerStatLevels(t, 2, levelsPerStat, free);
 			if (h + a + s > 0)
 			{
+				t.SetStats();
+				AchievementManager.instance?.TowerLevel(t.level);
 				upgradedTowers++;
 			}
+		}
+		if (upgradedTowers > 0)
+		{
+			SFXManager.instance?.ButtonClick();
 		}
 		TowerUI openUi = UnityEngine.Object.FindObjectOfType<TowerUI>();
 		if (openUi != null)
@@ -623,6 +694,62 @@ internal static class CheatActions
 			}
 		}
 		return upgradedTowers;
+	}
+
+	internal static int OpenAllChestsCheat()
+	{
+		if (ModuleBridge.HasCleanQoL)
+		{
+			int res = ModuleBridge.OpenAllChests();
+			if (res >= 0) return res;
+		}
+		if (CardManager.instance == null) return 0;
+		TreasureChest[] chests = UnityEngine.Object.FindObjectsOfType<TreasureChest>();
+		if (chests == null || chests.Length == 0) return 0;
+		int cardDraw = 2 + PlayerPrefs.GetInt("TreasureDraw1", 0);
+		int count = 0;
+		foreach (TreasureChest chest in chests)
+		{
+			if (chest == null) continue;
+			int drops = Mathf.Max(1, chest.numberOfDrops);
+			for (int d = 0; d < drops; d++)
+			{
+				CardManager.instance.DrawCards(cardDraw);
+			}
+			UnityEngine.Object.Destroy(chest.gameObject);
+			count++;
+		}
+		if (count > 0) SFXManager.instance?.ButtonClick();
+		return count;
+	}
+
+	internal static int ChopAllTreesCheat()
+	{
+		if (ModuleBridge.HasCleanQoL)
+		{
+			int res = ModuleBridge.ChopAllTrees();
+			if (res >= 0) return res;
+		}
+		TreeSpawn[] trees = UnityEngine.Object.FindObjectsOfType<TreeSpawn>();
+		if (trees == null || trees.Length == 0) return 0;
+		var spawnedRef = AccessTools.FieldRefAccess<SpawnableObject, bool>("spawned");
+		int level = SpawnManager.instance != null ? SpawnManager.instance.level : 0;
+		int goldPerTree = level * level;
+		int count = 0;
+		foreach (TreeSpawn tree in trees)
+		{
+			if (tree == null || !spawnedRef(tree)) continue;
+			UnityEngine.Object.Destroy(tree.gameObject);
+			count++;
+		}
+		if (count > 0)
+		{
+			int totalGold = count * goldPerTree;
+			ResourceManager.instance?.AddMoney(totalGold);
+			DamageTracker.instance?.AddIncome(DamageTracker.IncomeType.Tree, totalGold);
+			SFXManager.instance?.ButtonClick();
+		}
+		return count;
 	}
 
 	internal static IReadOnlyList<CardCatalogEntry> GetAllEntries()

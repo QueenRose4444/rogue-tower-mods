@@ -4,7 +4,62 @@ using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace RogueTowerCustomLevels;
+namespace RogueTowerQoL;
+
+public enum ChestHandlingMode
+{
+	Off = 0,
+	PopupButton = 1,
+	AutoOpenImmediately = 2
+}
+
+internal static class QoLInputBlockerPatches
+{
+	[HarmonyPatch(typeof(UIManager), "Update")]
+	[HarmonyPrefix]
+	private static bool UIManager_Update_Prefix()
+	{
+		if (QuickHudManager.IsPointerOverQuickButton() || HotbarSortOverlayUI.IsPointerOverOverlay)
+		{
+			return false;
+		}
+		return true;
+	}
+
+	[HarmonyPatch(typeof(BuildingManager), "Update")]
+	[HarmonyPrefix]
+	private static bool BuildingManager_Update_Prefix()
+	{
+		if (HotbarSortOverlayUI.IsPointerOverOverlay)
+		{
+			return false;
+		}
+		return true;
+	}
+
+	[HarmonyPatch(typeof(CameraController), "UpdateZoom")]
+	[HarmonyPrefix]
+	private static bool CameraController_UpdateZoom_Prefix()
+	{
+		if (HotbarSortOverlayUI.IsPointerOverOverlay)
+		{
+			return false;
+		}
+		return true;
+	}
+
+	[HarmonyPatch(typeof(PauseMenu), "Update")]
+	[HarmonyPrefix]
+	private static bool PauseMenu_Update_Prefix()
+	{
+		if (HotbarSortOverlayUI.IsOpen && Input.GetKeyDown(KeyCode.Escape))
+		{
+			HotbarSortOverlayUI.SetOpen(false);
+			return false;
+		}
+		return true;
+	}
+}
 
 internal static class QuickHudPatches
 {
@@ -175,9 +230,6 @@ internal static class QuickHudManager
 	private static GameObject _chopTreesButtonObj;
 	private static Text _chopTreesButtonText;
 	private static RectTransform _chopTreesRect;
-
-	internal static int ActiveChestCount => ActiveChests.Count;
-	internal static int ActiveTreeCount => ActiveTrees.Count;
 
 	internal static bool IsSpawned(TreeSpawn tree)
 	{

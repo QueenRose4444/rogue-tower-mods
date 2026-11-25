@@ -32,7 +32,8 @@ internal static class HotbarLoadoutPatches
 	[HarmonyPrefix]
 	private static void TowerUnlockManager_DisplayButtons_Prefix(TowerUnlockManager __instance)
 	{
-		if (Plugin.AutoSortHotbar.Value)
+		// When RogueTowerQoL is installed, it handles hotbar sorting directly as a non-cheat QoL feature.
+		if (!ModuleBridge.HasCleanQoL && Plugin.AutoSortHotbar.Value)
 		{
 			HotbarAndLoadoutManager.SortManagerLists(__instance);
 		}
@@ -91,7 +92,7 @@ internal static class HotbarAndLoadoutManager
 	internal static void OnTowerUnlockManagerStart(TowerUnlockManager mgr)
 	{
 		EnsureInitialized();
-		if (Plugin.AutoSortHotbar.Value && mgr != null)
+		if (!ModuleBridge.HasCleanQoL && Plugin.AutoSortHotbar.Value && mgr != null)
 		{
 			SortManagerLists(mgr);
 			DisplayButtonsMethod?.Invoke(mgr, null);
@@ -118,7 +119,6 @@ internal static class HotbarAndLoadoutManager
 		ItemsById.Clear();
 		ItemsByUI.Clear();
 
-		// 1. Capture default Ballista (already in unlockedTowers at start)
 		List<GameObject> startTowers = UnlockedTowersRef(TowerUnlockManager.instance);
 		if (startTowers != null)
 		{
@@ -140,7 +140,6 @@ internal static class HotbarAndLoadoutManager
 			}
 		}
 
-		// 2. Capture all other Towers & Buildings from TowerUnlockCard instances in scene
 		TowerUnlockCard[] cards = Resources.FindObjectsOfTypeAll<TowerUnlockCard>();
 		foreach (TowerUnlockCard card in cards)
 		{
@@ -260,6 +259,19 @@ internal static class HotbarAndLoadoutManager
 		};
 	}
 
+	private static string GetEffectiveOrderCsv(bool isTower)
+	{
+		if (isTower)
+		{
+			return ModuleBridge.HasCleanQoL
+				? ModuleBridge.GetQoLTowerHotbarOrderCsv(DefaultTowerOrderCsv)
+				: Plugin.TowerHotbarOrder.Value;
+		}
+		return ModuleBridge.HasCleanQoL
+			? ModuleBridge.GetQoLBuildingHotbarOrderCsv(DefaultBuildingOrderCsv)
+			: Plugin.BuildingHotbarOrder.Value;
+	}
+
 	internal static List<string> ParseOrderCsv(string csv, string fallbackCsv)
 	{
 		List<string> list = new List<string>();
@@ -287,9 +299,9 @@ internal static class HotbarAndLoadoutManager
 	internal static List<HotbarItemInfo> GetOrderedItems(bool isTower)
 	{
 		EnsureInitialized();
-		List<string> order = isTower
-			? ParseOrderCsv(Plugin.TowerHotbarOrder.Value, DefaultTowerOrderCsv)
-			: ParseOrderCsv(Plugin.BuildingHotbarOrder.Value, DefaultBuildingOrderCsv);
+		List<string> order = ParseOrderCsv(
+			GetEffectiveOrderCsv(isTower),
+			isTower ? DefaultTowerOrderCsv : DefaultBuildingOrderCsv);
 
 		List<HotbarItemInfo> result = new List<HotbarItemInfo>();
 		HashSet<string> added = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -321,12 +333,6 @@ internal static class HotbarAndLoadoutManager
 			? UnlockedTowersRef(TowerUnlockManager.instance)
 			: UnlockedBuildingsRef(TowerUnlockManager.instance);
 		return list != null && list.Contains(info.UIObject) && info.UIObject.activeSelf;
-	}
-
-	internal static bool IsItemUnlockedById(string id)
-	{
-		EnsureInitialized();
-		return ItemsById.TryGetValue(id, out HotbarItemInfo info) && IsItemUnlocked(info);
 	}
 
 	internal static bool SetItemUnlocked(string id, bool unlock)
@@ -395,6 +401,11 @@ internal static class HotbarAndLoadoutManager
 
 	internal static void MoveItemInOrder(string id, int delta)
 	{
+		if (ModuleBridge.HasCleanQoL && ModuleBridge.MoveQoLHotbarItem(id, delta))
+		{
+			return;
+		}
+
 		EnsureInitialized();
 		if (!ItemsById.TryGetValue(id, out HotbarItemInfo info))
 		{
@@ -437,6 +448,10 @@ internal static class HotbarAndLoadoutManager
 
 	internal static void ResetDefaultOrder()
 	{
+		if (ModuleBridge.HasCleanQoL && ModuleBridge.ResetQoLHotbarOrder())
+		{
+			return;
+		}
 		Plugin.TowerHotbarOrder.Value = DefaultTowerOrderCsv;
 		Plugin.BuildingHotbarOrder.Value = DefaultBuildingOrderCsv;
 		ForceRefreshHotbar();
@@ -450,8 +465,8 @@ internal static class HotbarAndLoadoutManager
 		}
 		EnsureInitialized();
 
-		Dictionary<string, int> towerRank = BuildRankMap(ParseOrderCsv(Plugin.TowerHotbarOrder.Value, DefaultTowerOrderCsv));
-		Dictionary<string, int> bldRank = BuildRankMap(ParseOrderCsv(Plugin.BuildingHotbarOrder.Value, DefaultBuildingOrderCsv));
+		Dictionary<string, int> towerRank = BuildRankMap(ParseOrderCsv(GetEffectiveOrderCsv(true), DefaultTowerOrderCsv));
+		Dictionary<string, int> bldRank = BuildRankMap(ParseOrderCsv(GetEffectiveOrderCsv(false), DefaultBuildingOrderCsv));
 
 		List<GameObject> towers = UnlockedTowersRef(mgr);
 		if (towers != null && towers.Count > 1)
@@ -490,6 +505,10 @@ internal static class HotbarAndLoadoutManager
 
 	internal static void ForceRefreshHotbar()
 	{
+		if (ModuleBridge.HasCleanQoL && ModuleBridge.ForceRefreshQoLHotbar())
+		{
+			return;
+		}
 		if (TowerUnlockManager.instance == null)
 		{
 			return;

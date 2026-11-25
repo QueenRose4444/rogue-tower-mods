@@ -22,7 +22,7 @@ internal static class InputBlockerPatches
 	[HarmonyPrefix]
 	private static bool UIManager_Update_Prefix()
 	{
-		if (QuickHudManager.IsPointerOverQuickButton() || ModMenuUI.IsPointerOverMenu)
+		if (ModMenuUI.IsPointerOverMenu)
 		{
 			return false;
 		}
@@ -365,8 +365,8 @@ internal static class ModMenuUI
 		Button rotLeftBtn = CreateSimpleButton(hdrRt, "<90", Vector2.zero, new Vector2(34f, 28f), BgButton, TextLight, 11, () =>
 		{
 			if (!CheatActions.IsInGameRun) return;
-			CameraAndPlacementHelper.RotateBy(-90f);
-			ShowToast("Rotated camera -90 deg");
+			if (ModuleBridge.RotateCameraBy(-90f)) ShowToast("Rotated camera -90 deg");
+			else ShowToast("Install RogueTowerQoL for camera rotation");
 		});
 		RectTransform rlRt = rotLeftBtn.GetComponent<RectTransform>();
 		rlRt.anchorMin = new Vector2(1f, 0.5f);
@@ -377,8 +377,8 @@ internal static class ModMenuUI
 		Button rotRightBtn = CreateSimpleButton(hdrRt, "90>", Vector2.zero, new Vector2(34f, 28f), BgButton, TextLight, 11, () =>
 		{
 			if (!CheatActions.IsInGameRun) return;
-			CameraAndPlacementHelper.RotateBy(90f);
-			ShowToast("Rotated camera +90 deg");
+			if (ModuleBridge.RotateCameraBy(90f)) ShowToast("Rotated camera +90 deg");
+			else ShowToast("Install RogueTowerQoL for camera rotation");
 		});
 		RectTransform rrRt = rotRightBtn.GetComponent<RectTransform>();
 		rrRt.anchorMin = new Vector2(1f, 0.5f);
@@ -389,8 +389,8 @@ internal static class ModMenuUI
 		Button topBtn = CreateSimpleButton(hdrRt, "Top", Vector2.zero, new Vector2(38f, 28f), BgButton, GoldAccent, 11, () =>
 		{
 			if (!CheatActions.IsInGameRun) return;
-			CameraAndPlacementHelper.ToggleTopDown();
-			ShowToast($"Top-Down View: {(CameraAndPlacementHelper.IsTopDown ? "ON" : "OFF")}");
+			if (ModuleBridge.ToggleTopDown()) ShowToast($"Top-Down View: {(ModuleBridge.IsTopDownActive() ? "ON" : "OFF")}");
+			else ShowToast("Install RogueTowerQoL for Top-Down view");
 		});
 		RectTransform tdRt = topBtn.GetComponent<RectTransform>();
 		tdRt.anchorMin = new Vector2(1f, 0.5f);
@@ -831,8 +831,8 @@ internal static class ModMenuUI
 		AddActionRow("Wave & Cards", new (string, Action)[]
 		{
 			("Draw 3 Cards", () => { RequireRun(() => { CheatActions.DrawCardsNow(3); ShowToast("Drawing 3 cards"); }); }),
-			("Open Chests", () => { RequireRun(() => { int n = QuickHudManager.OpenAllChests(); ShowToast(n > 0 ? $"Opened {n} chest(s)" : "No chests on map"); }); }),
-			("Chop Trees", () => { RequireRun(() => { int n = QuickHudManager.ChopAllTrees(); ShowToast(n > 0 ? $"Chopped {n} tree(s)" : "No trees on map"); }); }),
+			("Open Chests", () => { RequireRun(() => { int n = CheatActions.OpenAllChestsCheat(); ShowToast(n > 0 ? $"Opened {n} chest(s)" : "No chests on map"); }); }),
+			("Chop Trees", () => { RequireRun(() => { int n = CheatActions.ChopAllTreesCheat(); ShowToast(n > 0 ? $"Chopped {n} tree(s)" : "No trees on map"); }); }),
 			("Kill All Enemies", () => { RequireRun(() => { int n = CheatActions.KillAllEnemies(); ShowToast($"Killed {n} enemies"); }); })
 		});
 
@@ -858,15 +858,15 @@ internal static class ModMenuUI
 			return;
 		}
 
-		AddSectionHeader("Hotbar Rules & Saved Loadouts");
+		AddSectionHeader("Cheat Tower Loadouts & Hotbar Grants");
 		Transform optGrid = AddGrid(2, 340f, 34f, 8f);
-		AddToggleTile(optGrid, "Auto-Sort Hotbar Order", () => Plugin.AutoSortHotbar.Value, v =>
+		AddToggleTile(optGrid, ModuleBridge.HasCleanQoL ? "Auto-Sort Hotbar (via QoL)" : "Auto-Sort Hotbar Order", () => ModuleBridge.GetQoLAutoSortHotbar(), v =>
 		{
-			Plugin.AutoSortHotbar.Value = v;
+			ModuleBridge.SetQoLAutoSortHotbar(v);
 			if (v) HotbarAndLoadoutManager.ForceRefreshHotbar();
 			ShowToast($"Auto-Sort Hotbar: {(v ? "ON" : "OFF")}");
 		});
-		AddToggleTile(optGrid, "Lock Card Pool to Hotbar", () => Plugin.LockCardPoolToHotbar.Value, v =>
+		AddToggleTile(optGrid, "Lock Card Pool to Hotbar (Cheat)", () => Plugin.LockCardPoolToHotbar.Value, v =>
 		{
 			Plugin.LockCardPoolToHotbar.Value = v;
 			ShowToast($"Lock Card Pool to Hotbar: {(v ? "ON" : "OFF")}");
@@ -1379,23 +1379,58 @@ internal static class ModMenuUI
 			AddPluginConfigToggle(spGrid, "Cap Speed to 1x on Expand", ModuleBridge.Keys.SpeedControls, "General", "ResetSpeedOnExpand");
 		}
 
-		// 2. Quick Chests, Trees & Tower Fast Upgrades
-		AddSectionHeader("Quick HUD & Tower Fast Upgrades");
-		Transform qhGrid = AddGrid(2, 340f, 34f, 8f);
-
-		AddCycleTile(qhGrid, "Chest Mode", () => Plugin.ChestMode.Value.ToString(), () =>
+		// 2. Non-Cheat QoL Suite (RogueTowerQoL v2.0.0)
+		if (ModuleBridge.HasCleanQoL)
 		{
-			int next = ((int)Plugin.ChestMode.Value + 1) % 3;
-			Plugin.ChestMode.Value = (ChestHandlingMode)next;
-			ShowToast($"Chest Mode: {Plugin.ChestMode.Value}");
-		});
-		AddToggleTile(qhGrid, "Chop Trees HUD Button", () => Plugin.ShowChopAllTreesButton.Value, v => Plugin.ShowChopAllTreesButton.Value = v);
-		AddToggleTile(qhGrid, "Early Expand (Skip Wave Wait)", () => Plugin.AllowEarlyExpand.Value, v => Plugin.AllowEarlyExpand.Value = v);
-		AddToggleTile(qhGrid, "Tower Hold & +10 Snap Panel", () => Plugin.EnableTowerFastUpgrade.Value, v => Plugin.EnableTowerFastUpgrade.Value = v);
-		AddCycleTile(qhGrid, "Hold Upgrade Speed", () => Plugin.HoldRepeatSpeed.Value switch { 0 => "Normal", 2 => "Turbo", _ => "Fast" }, () =>
-		{
-			Plugin.HoldRepeatSpeed.Value = (Plugin.HoldRepeatSpeed.Value + 1) % 3;
-		});
+			AddSectionHeader("Quality of Life (RogueTowerQoL v2.0)");
+			Transform cqGrid = AddGrid(2, 340f, 34f, 8f);
+			AddPluginConfigToggle(cqGrid, "Hotbar Auto-Sort", ModuleBridge.Keys.CleanQoL, "5. Hotbar Sorting", "AutoSortHotbar", () => HotbarAndLoadoutManager.ForceRefreshHotbar());
+			AddPluginConfigToggle(cqGrid, "Show 'Sort Bar' Hotbar Button", ModuleBridge.Keys.CleanQoL, "5. Hotbar Sorting", "ShowHotbarSortButton");
+			AddPluginConfigToggle(cqGrid, "Tower Hold & +10 Snap Panel", ModuleBridge.Keys.CleanQoL, "6. Tower Fast Upgrades", "EnableTowerFastUpgrade");
+			AddCycleTile(cqGrid, "Hold Upgrade Speed", () =>
+			{
+				ModuleBridge.TryGetConfig(ModuleBridge.Keys.CleanQoL, "6. Tower Fast Upgrades", "HoldRepeatSpeed", out int sp);
+				return sp switch { 0 => "Normal", 2 => "Turbo", _ => "Fast" };
+			}, () =>
+			{
+				ModuleBridge.TryGetConfig(ModuleBridge.Keys.CleanQoL, "6. Tower Fast Upgrades", "HoldRepeatSpeed", out int cur);
+				ModuleBridge.SetConfig(ModuleBridge.Keys.CleanQoL, "6. Tower Fast Upgrades", "HoldRepeatSpeed", (cur + 1) % 3);
+			});
+			AddCycleTile(cqGrid, "Chest Mode", () =>
+			{
+				return ModuleBridge.GetQoLChestModeInt() switch { 0 => "Off", 2 => "AutoOpen", _ => "PopupButton" };
+			}, () =>
+			{
+				int next = (ModuleBridge.GetQoLChestModeInt() + 1) % 3;
+				ModuleBridge.SetQoLChestModeInt(next);
+				string lbl = next switch { 0 => "Off", 2 => "AutoOpen", _ => "PopupButton" };
+				ShowToast($"Chest Mode: {lbl}");
+			});
+			AddPluginConfigToggle(cqGrid, "Chop Trees HUD Button", ModuleBridge.Keys.CleanQoL, "8. Chests, Trees & Early Expand", "ShowChopAllTreesButton");
+			AddPluginConfigToggle(cqGrid, "Early Expand (Skip Wave Wait)", ModuleBridge.Keys.CleanQoL, "8. Chests, Trees & Early Expand", "AllowEarlyExpand");
+			AddPluginConfigToggle(cqGrid, "Build-Mode Range Ring", ModuleBridge.Keys.CleanQoL, "1. Range Circles", "EnableGhostRange");
+			AddPluginConfigToggle(cqGrid, "Hover Tower Range Ring", ModuleBridge.Keys.CleanQoL, "1. Range Circles", "EnableHoverRange");
+			AddPluginConfigToggle(cqGrid, "Priority Tint Colors", ModuleBridge.Keys.CleanQoL, "2. Targeting Priorities", "EnablePriorityColors");
+			AddPluginConfigToggle(cqGrid, "Levels to RPM (+7%/lvl)", ModuleBridge.Keys.CleanQoL, "3. Levels to RPM", "EnableLevelsToRpm", () => ModuleBridge.RefreshQoLTowers());
+			AddPluginConfigToggle(cqGrid, "Camera Rotation ([ / ] / V)", ModuleBridge.Keys.CleanQoL, "7. Camera & Occluded Placement", "EnableCameraRotation", () =>
+			{
+				if (!ModuleBridge.TryGetConfig(ModuleBridge.Keys.CleanQoL, "7. Camera & Occluded Placement", "EnableCameraRotation", out bool en) || !en)
+				{
+					ModuleBridge.ResetCameraView();
+				}
+			});
+			AddPluginConfigToggle(cqGrid, "Auto Top-Down in Build Mode", ModuleBridge.Keys.CleanQoL, "7. Camera & Occluded Placement", "AutoTopDownInBuildMode");
+			AddPluginConfigToggle(cqGrid, "X-Ray Build Behind Cliffs/Towers", ModuleBridge.Keys.CleanQoL, "7. Camera & Occluded Placement", "EnableXRayPlacement");
+			AddPluginConfigToggle(cqGrid, "Hold LeftAlt Cutaway & Deep Select", ModuleBridge.Keys.CleanQoL, "7. Camera & Occluded Placement", "EnableAltCutaway");
+			AddActionRow("QoL Tools", new (string, Action)[]
+			{
+				("Open Hotbar Order Popup", () =>
+				{
+					if (!CheatActions.IsInGameRun) { ShowToast("Start a run to reorder the in-game hotbar."); return; }
+					ModuleBridge.SetQoLHotbarSortOpen(true);
+				})
+			});
+		}
 
 		// 3. Quick Research Tree & Auto-Max
 		if (ModuleBridge.HasQuickTree)
@@ -1439,6 +1474,10 @@ internal static class ModMenuUI
 				ShowToast($"Next Run Map: {presets[next]}");
 			});
 			AddPluginConfigToggle(cmGrid, "Remember Map Across Runs", ModuleBridge.Keys.CustomMaps, "General", "RememberMapAcrossRuns");
+			AddActionRow("Map Builder", new (string, Action)[]
+			{
+				("Open Custom Map Sequence Editor", () => { ModuleBridge.OpenCustomMapEditor(); })
+			});
 		}
 
 		// 5. Levels to RPM
@@ -1545,35 +1584,14 @@ internal static class ModMenuUI
 			AddPluginConfigToggle(miscGrid, "Dark Mode Enabled", ModuleBridge.Keys.DarkMode, "General", "Enabled", () => ModuleBridge.ApplyDarkMode());
 		}
 
-		if (ModuleBridge.HasCleanQoL)
-		{
-			AddSectionHeader("Clean-Room QoL (RogueTowerQoL)");
-			Transform cqGrid = AddGrid(2, 340f, 34f, 8f);
-			AddPluginConfigToggle(cqGrid, "Build-Mode Range Ring", ModuleBridge.Keys.CleanQoL, "1. Range Circles", "EnableGhostRange");
-			AddPluginConfigToggle(cqGrid, "Hover Tower Range Ring", ModuleBridge.Keys.CleanQoL, "1. Range Circles", "EnableHoverRange");
-			AddPluginConfigToggle(cqGrid, "Priority Tint Colors", ModuleBridge.Keys.CleanQoL, "2. Targeting Priorities", "EnablePriorityColors");
-			AddPluginConfigToggle(cqGrid, "Levels to RPM (+7%/lvl)", ModuleBridge.Keys.CleanQoL, "3. Levels to RPM", "EnableLevelsToRpm", () =>
-			{
-				if (TowerManager.instance != null) TowerManager.instance.UpdateAllTowers();
-			});
-		}
-
 		if (ModuleBridge.IsLoaded(ModuleBridge.Keys.DisableProg))
 		{
 			AddPluginConfigToggle(miscGrid, "Block Achievements (DisableTriumphs)", ModuleBridge.Keys.DisableProg, "General", "Enabled");
 		}
 
-		// 8. Camera, Placement & Test Harness
-		AddSectionHeader("Camera Rotation, Hidden Tile Placement & Test Harness");
+		// 8. Test Harness
+		AddSectionHeader("Focusless CLI Test Harness");
 		Transform camGrid = AddGrid(2, 340f, 34f, 8f);
-		AddToggleTile(camGrid, "Camera Rotation ([ / ] / Header)", () => Plugin.EnableCameraRotation.Value, v =>
-		{
-			Plugin.EnableCameraRotation.Value = v;
-			if (!v) CameraAndPlacementHelper.ResetCameraView();
-		});
-		AddToggleTile(camGrid, "Auto Top-Down in Build Mode", () => Plugin.AutoTopDownInBuildMode.Value, v => Plugin.AutoTopDownInBuildMode.Value = v);
-		AddToggleTile(camGrid, "X-Ray Build Behind Cliffs/Towers", () => Plugin.EnableXRayPlacement.Value, v => Plugin.EnableXRayPlacement.Value = v);
-		AddToggleTile(camGrid, "Hold LeftAlt Cutaway & Deep Select", () => Plugin.EnableAltCutaway.Value, v => Plugin.EnableAltCutaway.Value = v);
 		AddToggleTile(camGrid, "Focusless Test Server (127.0.0.1)", () => Plugin.EnableTestServer.Value, v =>
 		{
 			Plugin.EnableTestServer.Value = v;

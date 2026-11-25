@@ -36,6 +36,35 @@ internal static class ModuleBridge
 		return null;
 	}
 
+	private static T InvokeStatic<T>(string guid, string methodName, T fallback, params object[] args)
+	{
+		BaseUnityPlugin p = GetPlugin(guid);
+		if (p != null)
+		{
+			MethodInfo m = p.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
+			if (m != null && m.Invoke(null, args) is T val)
+			{
+				return val;
+			}
+		}
+		return fallback;
+	}
+
+	private static bool InvokeStaticVoid(string guid, string methodName, params object[] args)
+	{
+		BaseUnityPlugin p = GetPlugin(guid);
+		if (p != null)
+		{
+			MethodInfo m = p.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
+			if (m != null)
+			{
+				m.Invoke(null, args);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	internal static bool TryGetConfig<T>(string guid, string section, string key, out T value)
 	{
 		value = default;
@@ -75,151 +104,45 @@ internal static class ModuleBridge
 
 	internal static float GetSpeed()
 	{
-		BaseUnityPlugin p = GetPlugin(GuidSpeedControls);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("GetEffectiveSpeed", BindingFlags.Public | BindingFlags.Static);
-			if (m != null && m.Invoke(null, null) is float f)
-			{
-				return f;
-			}
-		}
-		return Time.timeScale;
+		return InvokeStatic(GuidSpeedControls, "GetEffectiveSpeed", Time.timeScale);
 	}
 
 	internal static void SetSpeed(float multiplier)
 	{
-		BaseUnityPlugin p = GetPlugin(GuidSpeedControls);
-		if (p != null)
+		if (!InvokeStaticVoid(GuidSpeedControls, "SetCustomSpeed", multiplier))
 		{
-			MethodInfo m = p.GetType().GetMethod("SetCustomSpeed", BindingFlags.Public | BindingFlags.Static);
-			if (m != null)
-			{
-				m.Invoke(null, new object[] { multiplier });
-				return;
-			}
+			Time.timeScale = Mathf.Max(0f, multiplier);
 		}
-		Time.timeScale = Mathf.Max(0f, multiplier);
 	}
 
 	// ---- QuickTree ----
 	internal static bool HasQuickTree => IsLoaded(GuidQuickTree);
 
-	internal static int GetAutoMaxMode()
-	{
-		BaseUnityPlugin p = GetPlugin(GuidQuickTree);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("GetAutoMaxMode", BindingFlags.Public | BindingFlags.Static);
-			if (m != null && m.Invoke(null, null) is int val)
-			{
-				return val;
-			}
-		}
-		return 0;
-	}
-
-	internal static void SetAutoMaxMode(int mode)
-	{
-		BaseUnityPlugin p = GetPlugin(GuidQuickTree);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("SetAutoMaxMode", BindingFlags.Public | BindingFlags.Static);
-			m?.Invoke(null, new object[] { mode });
-		}
-	}
+	internal static int GetAutoMaxMode() => InvokeStatic(GuidQuickTree, "GetAutoMaxMode", 0);
+	internal static void SetAutoMaxMode(int mode) => InvokeStaticVoid(GuidQuickTree, "SetAutoMaxMode", mode);
 
 	// ---- CustomMaps ----
 	internal static bool HasCustomMaps => IsLoaded(GuidCustomMaps);
 
-	internal static string[] GetMapPresetNames()
-	{
-		BaseUnityPlugin p = GetPlugin(GuidCustomMaps);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("GetPresetNames", BindingFlags.Public | BindingFlags.Static);
-			if (m != null && m.Invoke(null, null) is string[] arr)
-			{
-				return arr;
-			}
-		}
-		return new[] { "Vanilla (Random)" };
-	}
-
-	internal static int GetSelectedMapIndex()
-	{
-		BaseUnityPlugin p = GetPlugin(GuidCustomMaps);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("GetSelectedMapIndex", BindingFlags.Public | BindingFlags.Static);
-			if (m != null && m.Invoke(null, null) is int idx)
-			{
-				return idx;
-			}
-		}
-		return 0;
-	}
-
-	internal static void SetSelectedMapIndex(int idx)
-	{
-		BaseUnityPlugin p = GetPlugin(GuidCustomMaps);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("SetSelectedMapIndex", BindingFlags.Public | BindingFlags.Static);
-			m?.Invoke(null, new object[] { idx });
-		}
-	}
-
-	internal static string GetActiveRunMapName()
-	{
-		BaseUnityPlugin p = GetPlugin(GuidCustomMaps);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("GetActiveRunMapName", BindingFlags.Public | BindingFlags.Static);
-			if (m != null && m.Invoke(null, null) is string name)
-			{
-				return name;
-			}
-		}
-		return "Vanilla (Random)";
-	}
+	internal static string[] GetMapPresetNames() => InvokeStatic(GuidCustomMaps, "GetPresetNames", new[] { "Vanilla (Random)" });
+	internal static int GetSelectedMapIndex() => InvokeStatic(GuidCustomMaps, "GetSelectedMapIndex", 0);
+	internal static void SetSelectedMapIndex(int idx) => InvokeStaticVoid(GuidCustomMaps, "SetSelectedMapIndex", idx);
+	internal static string GetActiveRunMapName() => InvokeStatic(GuidCustomMaps, "GetActiveRunMapName", "Vanilla (Random)");
+	internal static bool OpenCustomMapEditor() => InvokeStaticVoid(GuidCustomMaps, "OpenCustomMapEditor");
 
 	// ---- LevelsToRpm ----
 	internal static bool HasLevelsToRpm => IsLoaded(GuidLevelsToRpm);
-
-	internal static void RefreshLevelsToRpmTowers()
-	{
-		BaseUnityPlugin p = GetPlugin(GuidLevelsToRpm);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("RefreshAllTowers", BindingFlags.Public | BindingFlags.Static);
-			m?.Invoke(null, null);
-		}
-	}
+	internal static void RefreshLevelsToRpmTowers() => InvokeStaticVoid(GuidLevelsToRpm, "RefreshAllTowers");
 
 	// ---- DarkMode / RogueTowerThemes ----
 	internal static bool HasDarkMode => IsLoaded(GuidDarkMode);
 	internal static bool HasThemes => IsLoaded(GuidThemes);
-	internal static bool HasCleanQoL => IsLoaded(GuidCleanQoL);
 
-	internal static void ApplyDarkMode()
-	{
-		BaseUnityPlugin p = GetPlugin(GuidDarkMode);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("ApplyCurrentState", BindingFlags.Public | BindingFlags.Static);
-			m?.Invoke(null, null);
-		}
-	}
+	internal static void ApplyDarkMode() => InvokeStaticVoid(GuidDarkMode, "ApplyCurrentState");
 
 	internal static int GetThemeMode()
 	{
-		BaseUnityPlugin p = GetPlugin(GuidThemes);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("GetModeInt", BindingFlags.Public | BindingFlags.Static);
-			if (m != null && m.Invoke(null, null) is int val) return val;
-		}
+		if (HasThemes) return InvokeStatic(GuidThemes, "GetModeInt", 0);
 		return HasDarkMode && TryGetConfig(GuidDarkMode, "General", "Enabled", out bool dmOn) && dmOn ? 1 : 0;
 	}
 
@@ -235,16 +158,7 @@ internal static class ModuleBridge
 
 	internal static void SetThemeMode(int mode)
 	{
-		BaseUnityPlugin p = GetPlugin(GuidThemes);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("SetModeInt", BindingFlags.Public | BindingFlags.Static);
-			if (m != null)
-			{
-				m.Invoke(null, new object[] { mode });
-				return;
-			}
-		}
+		if (InvokeStaticVoid(GuidThemes, "SetModeInt", mode)) return;
 		if (HasDarkMode)
 		{
 			SetConfig(GuidDarkMode, "General", "Enabled", mode == 1);
@@ -254,13 +168,7 @@ internal static class ModuleBridge
 
 	internal static string ToggleLightDark()
 	{
-		BaseUnityPlugin p = GetPlugin(GuidThemes);
-		if (p != null)
-		{
-			MethodInfo m = p.GetType().GetMethod("ToggleLightDark", BindingFlags.Public | BindingFlags.Static);
-			m?.Invoke(null, null);
-			return GetThemeModeName();
-		}
+		if (InvokeStaticVoid(GuidThemes, "ToggleLightDark")) return GetThemeModeName();
 		if (HasDarkMode && TryGetConfig(GuidDarkMode, "General", "Enabled", out bool dmOn))
 		{
 			SetConfig(GuidDarkMode, "General", "Enabled", !dmOn);
@@ -270,15 +178,37 @@ internal static class ModuleBridge
 		return "Vanilla";
 	}
 
-	internal static void ApplyTheme()
+	internal static void ApplyTheme() => InvokeStaticVoid(GuidThemes, "ApplyTheme");
+
+	// ---- Clean-Room QoL (RogueTowerQoL v2.0.0+) ----
+	internal static bool HasCleanQoL => IsLoaded(GuidCleanQoL);
+
+	internal static bool GetQoLAutoSortHotbar() => InvokeStatic(GuidCleanQoL, "GetAutoSortHotbar", Plugin.AutoSortHotbar.Value);
+	internal static void SetQoLAutoSortHotbar(bool value)
 	{
-		BaseUnityPlugin p = GetPlugin(GuidThemes);
-		if (p != null)
+		if (!InvokeStaticVoid(GuidCleanQoL, "SetAutoSortHotbar", value))
 		{
-			MethodInfo m = p.GetType().GetMethod("ApplyTheme", BindingFlags.Public | BindingFlags.Static);
-			m?.Invoke(null, null);
+			Plugin.AutoSortHotbar.Value = value;
 		}
 	}
+	internal static string GetQoLTowerHotbarOrderCsv(string fallback) => InvokeStatic(GuidCleanQoL, "GetTowerHotbarOrderCsv", fallback);
+	internal static string GetQoLBuildingHotbarOrderCsv(string fallback) => InvokeStatic(GuidCleanQoL, "GetBuildingHotbarOrderCsv", fallback);
+	internal static bool MoveQoLHotbarItem(string id, int delta) => InvokeStaticVoid(GuidCleanQoL, "MoveHotbarItem", id, delta);
+	internal static bool ResetQoLHotbarOrder() => InvokeStaticVoid(GuidCleanQoL, "ResetHotbarOrder");
+	internal static bool ForceRefreshQoLHotbar() => InvokeStaticVoid(GuidCleanQoL, "ForceRefreshHotbar");
+	internal static bool SetQoLHotbarSortOpen(bool open) => InvokeStaticVoid(GuidCleanQoL, "SetHotbarSortOpen", open);
+
+	internal static bool RotateCameraBy(float deg) => InvokeStaticVoid(GuidCleanQoL, "RotateCameraBy", deg);
+	internal static bool ToggleTopDown() => InvokeStaticVoid(GuidCleanQoL, "ToggleTopDown");
+	internal static bool ResetCameraView() => InvokeStaticVoid(GuidCleanQoL, "ResetCameraView");
+	internal static float GetCameraYaw() => InvokeStatic(GuidCleanQoL, "GetCameraYaw", 0f);
+	internal static bool IsTopDownActive() => InvokeStatic(GuidCleanQoL, "IsTopDownActive", false);
+
+	internal static int OpenAllChests() => InvokeStatic(GuidCleanQoL, "OpenAllChests", -1);
+	internal static int ChopAllTrees() => InvokeStatic(GuidCleanQoL, "ChopAllTrees", -1);
+	internal static int GetQoLChestModeInt() => InvokeStatic(GuidCleanQoL, "GetChestModeInt", 1);
+	internal static void SetQoLChestModeInt(int mode) => InvokeStaticVoid(GuidCleanQoL, "SetChestModeInt", mode);
+	internal static void RefreshQoLTowers() => InvokeStaticVoid(GuidCleanQoL, "RefreshAllTowers");
 
 	// ---- BanishCards ----
 	internal static bool HasBanishCards => IsLoaded(GuidBanish);
