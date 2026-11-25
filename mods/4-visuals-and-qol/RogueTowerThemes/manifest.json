@@ -2,7 +2,7 @@
     "name":  "RogueTowerThemes",
     "version_number":  "1.0.0",
     "website_url":  "https://github.com/QueenRose4444/rogue-tower-mods",
-    "description":  "Clean-room customizable Light \u0026 Dark mode switcher with non-destructive original scene caching, per-theme sky/sun/UI brightness/contrast presets, F7 quick toggle, and live Mod Menu integration. Created by Rose with Gemini \u0026 Claude.",
+    "description":  "Clean-room customizable Light \u0026 Dark mode switcher with non-destructive original scene caching, per-theme sky/sun/ambient/UI brightness presets, F7 quick toggle, and live Mod Menu integration. Created by Rose with Gemini \u0026 Claude.",
     "dependencies":  [
                          "bbepis-BepInEx_Rogue_Tower-5.4.1900"
                      ]

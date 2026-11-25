@@ -6,9 +6,9 @@ Clean-room remake of custom map generation (Spiral CCW/CW, Barely Legal, The Clo
 > Created by **Rose** with AI assistance using **Google Gemini** and **Anthropic Claude** models.
 
 ## Features
-- Play Menu selector button & live RogueTowerModMenu Modules tab selector.
-- Presets: Vanilla, Spiral CCW/CW, Barely Legal, The Clock, 5 Straights + Portal, Instant Portal, 3-Way Instant Portal, 1 Turn 1/3 Portals, T-Split, and Custom CSV (S, L, R, SL, SR, LR, SLR, P).
-- Optional RememberMapAcrossRuns toggle.
+- Play Menu selector button & live `RogueTowerModMenu` Modules tab selector.
+- Presets: Vanilla, Spiral CCW/CW, Barely Legal, The Clock, 5 Straights + Portal, Instant Portal, 3-Way Instant Portal, 1 Turn 1/3 Portals, T-Split, and Custom CSV (`S, L, R, SL, SR, LR, SLR, P`).
+- Optional `RememberMapAcrossRuns` toggle.
 
 ## Source Code
 - Visual C# project: [`src/CustomMaps/`](../../../src/CustomMaps/)
@@ -22,4 +22,4 @@ Clean-room remake of custom map generation (Spiral CCW/CW, Barely Legal, The Clo
 2. Copy `plugins/RogueTowerCustomMaps.dll` into `Rogue Tower/BepInEx/plugins/RogueTowerCustomMaps/`.
 
 ## Credits & Inspiration
-- Inspired by **acr** (cr-gaming/rogue-tower-custom-maps on GitHub / cr-Rogue_Tower_Custom_Maps on Thunderstore); written clean-room from scratch by Rose.
+- Inspired by **acr** (`acr-gaming/rogue-tower-custom-maps` on GitHub / `acr-Rogue_Tower_Custom_Maps` on Thunderstore); written clean-room from scratch by Rose.

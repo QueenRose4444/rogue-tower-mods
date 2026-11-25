@@ -6,9 +6,9 @@ One-click Research Tree Buy/Refund buttons, Shift/Ctrl deep subtree purchasing, 
 > Created by **Rose** with AI assistance using **Google Gemini** and **Anthropic Claude** models.
 
 ## Features
-- Per-tree Buy Tree / Refund Tree buttons across all 15 towers, 6 passive groups, and DOT branches.
-- Modifier clicks (Shift, Ctrl, Ctrl+Shift) to buy or refund deep prerequisite chains & subtrees cleanly.
-- In-run **Auto-Max Branch** automation integrated with RogueTowerModMenu.
+- Per-tree `Buy Tree` / `Refund Tree` buttons across all 15 towers, 6 passive groups, and DOT branches.
+- Modifier clicks (`Shift`, `Ctrl`, `Ctrl+Shift`) to buy or refund deep prerequisite chains & subtrees cleanly.
+- In-run **Auto-Max Branch** automation integrated with `RogueTowerModMenu`.
 
 ## Source Code
 - Visual C# project: [`src/QuickTree/`](../../../src/QuickTree/)
@@ -22,4 +22,4 @@ One-click Research Tree Buy/Refund buttons, Shift/Ctrl deep subtree purchasing, 
 2. Copy `plugins/RogueTowerQuickTree.dll` into `Rogue Tower/BepInEx/plugins/RogueTowerQuickTree/`.
 
 ## Credits & Inspiration
-- Original mod by **Rose** (includes fixes for vanilla VampireLair, Monument, and ParticleCannon armor unlockString collisions).
+- Original mod by **Rose** (includes fixes for vanilla `VampireLair`, `Monument`, and `ParticleCannon` armor `unlockString` collisions).

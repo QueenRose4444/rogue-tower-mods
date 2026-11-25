@@ -44,7 +44,8 @@ public class Plugin : BaseUnityPlugin
 
 	// Dark preset
 	public static ConfigEntry<string> DarkSkyHex;
-	public static ConfigEntry<float> DarkSunIntensity;
+	public static ConfigEntry<float> DarkSunMultiplier;
+	public static ConfigEntry<string> DarkAmbientHex;
 	public static ConfigEntry<string> DarkSunHex;
 	public static ConfigEntry<string> DarkFillHex;
 	public static ConfigEntry<float> DarkUiBrightness;
@@ -52,7 +53,8 @@ public class Plugin : BaseUnityPlugin
 
 	// Light preset
 	public static ConfigEntry<string> LightSkyHex;
-	public static ConfigEntry<float> LightSunIntensity;
+	public static ConfigEntry<float> LightSunMultiplier;
+	public static ConfigEntry<string> LightAmbientHex;
 	public static ConfigEntry<string> LightSunHex;
 	public static ConfigEntry<string> LightFillHex;
 	public static ConfigEntry<float> LightUiBrightness;
@@ -80,6 +82,8 @@ public class Plugin : BaseUnityPlugin
 	}
 
 	private static Color _origCamBg = DefaultCameraSky;
+	private static Color _origAmbient = new Color(0.212f, 0.227f, 0.259f, 1f);
+	private static float _origAmbientIntensity = 1f;
 	private static bool _hasCamBg;
 	private static readonly Dictionary<int, LightSnapshot> OrigLights = new Dictionary<int, LightSnapshot>(8);
 	private static readonly Dictionary<int, ImageSnapshot> OrigImages = new Dictionary<int, ImageSnapshot>(256);
@@ -95,14 +99,16 @@ public class Plugin : BaseUnityPlugin
 		CycleIncludesVanilla = Config.Bind("1. General", "CycleIncludesVanilla", false, "If false, hotkey switches directly Dark <-> Light. If true, cycles Vanilla -> Dark -> Light.");
 
 		DarkSkyHex = Config.Bind("2. Dark Preset", "DarkSkyHex", "#0B1020", "Sky/camera clear color in Dark mode (#RRGGBB).");
-		DarkSunIntensity = Config.Bind("2. Dark Preset", "DarkSunIntensity", 1.15f, "Main sun intensity in Dark mode (vanilla 1.5).");
-		DarkSunHex = Config.Bind("2. Dark Preset", "DarkSunHex", "#B5BFFF", "Main directional light tint in Dark mode.");
-		DarkFillHex = Config.Bind("2. Dark Preset", "DarkFillHex", "#D875E8", "Secondary fill light tint in Dark mode.");
-		DarkUiBrightness = Config.Bind("2. Dark Preset", "DarkUiBrightness", 0.92f, "UI panel brightness multiplier (0.5 - 1.2) applied non-destructively in Dark mode.");
+		DarkSunMultiplier = Config.Bind("2. Dark Preset", "DarkSunMultiplier", 0.72f, "Directional light intensity multiplier in Dark mode (1.0 = vanilla).");
+		DarkAmbientHex = Config.Bind("2. Dark Preset", "DarkAmbientHex", "#1A2238", "Scene ambient tint in Dark mode (#RRGGBB).");
+		DarkSunHex = Config.Bind("2. Dark Preset", "DarkSunHex", "#9FB0FF", "Main directional light tint in Dark mode.");
+		DarkFillHex = Config.Bind("2. Dark Preset", "DarkFillHex", "#C87AE0", "Secondary fill light tint in Dark mode.");
+		DarkUiBrightness = Config.Bind("2. Dark Preset", "DarkUiBrightness", 0.78f, "UI panel brightness multiplier (0.5 - 1.2) applied non-destructively in Dark mode.");
 		DarkHighContrastText = Config.Bind("2. Dark Preset", "DarkHighContrastText", true, "Use crisp white modifier/HUD text in Dark mode.");
 
 		LightSkyHex = Config.Bind("3. Light Preset", "LightSkyHex", "#DCEBFF", "Sky/camera clear color in Light mode (#RRGGBB).");
-		LightSunIntensity = Config.Bind("3. Light Preset", "LightSunIntensity", 1.55f, "Main sun intensity in Light mode (vanilla 1.5).");
+		LightSunMultiplier = Config.Bind("3. Light Preset", "LightSunMultiplier", 1.08f, "Directional light intensity multiplier in Light mode (1.0 = vanilla).");
+		LightAmbientHex = Config.Bind("3. Light Preset", "LightAmbientHex", "#6D7A8E", "Scene ambient tint in Light mode (#RRGGBB).");
 		LightSunHex = Config.Bind("3. Light Preset", "LightSunHex", "#FFF9EC", "Main directional light tint in Light mode.");
 		LightFillHex = Config.Bind("3. Light Preset", "LightFillHex", "#D8ECFF", "Secondary fill light tint in Light mode.");
 		LightUiBrightness = Config.Bind("3. Light Preset", "LightUiBrightness", 1.02f, "UI panel brightness multiplier (0.5 - 1.2) applied non-destructively in Light mode.");
@@ -201,6 +207,8 @@ public class Plugin : BaseUnityPlugin
 		if (Camera.main != null && !_hasCamBg)
 		{
 			_origCamBg = Camera.main.backgroundColor;
+			_origAmbient = RenderSettings.ambientLight;
+			_origAmbientIntensity = RenderSettings.ambientIntensity;
 			_hasCamBg = true;
 		}
 
@@ -296,6 +304,8 @@ public class Plugin : BaseUnityPlugin
 			{
 				Camera.main.backgroundColor = _hasCamBg ? _origCamBg : DefaultCameraSky;
 			}
+			RenderSettings.ambientLight = _origAmbient;
+			RenderSettings.ambientIntensity = _origAmbientIntensity;
 			foreach (var kv in OrigLights)
 			{
 				if (kv.Value.Ref != null)
@@ -323,9 +333,10 @@ public class Plugin : BaseUnityPlugin
 
 		bool dark = mode == ThemeMode.Dark;
 		Color skyColor = ParseHexOrDefault(dark ? DarkSkyHex.Value : LightSkyHex.Value, dark ? new Color(0.043f, 0.063f, 0.125f, 1f) : new Color(0.863f, 0.922f, 1f, 1f));
-		Color sunColor = ParseHexOrDefault(dark ? DarkSunHex.Value : LightSunHex.Value, dark ? new Color(0.71f, 0.75f, 1f, 1f) : new Color(1f, 0.976f, 0.925f, 1f));
-		Color fillColor = ParseHexOrDefault(dark ? DarkFillHex.Value : LightFillHex.Value, dark ? new Color(0.847f, 0.459f, 0.910f, 1f) : new Color(0.847f, 0.925f, 1f, 1f));
-		float sunIntensity = Mathf.Clamp(dark ? DarkSunIntensity.Value : LightSunIntensity.Value, 0.1f, 4f);
+		Color ambientColor = ParseHexOrDefault(dark ? DarkAmbientHex.Value : LightAmbientHex.Value, dark ? new Color(0.10f, 0.13f, 0.22f, 1f) : new Color(0.43f, 0.48f, 0.56f, 1f));
+		Color sunColor = ParseHexOrDefault(dark ? DarkSunHex.Value : LightSunHex.Value, dark ? new Color(0.62f, 0.69f, 1f, 1f) : new Color(1f, 0.976f, 0.925f, 1f));
+		Color fillColor = ParseHexOrDefault(dark ? DarkFillHex.Value : LightFillHex.Value, dark ? new Color(0.78f, 0.48f, 0.88f, 1f) : new Color(0.847f, 0.925f, 1f, 1f));
+		float sunMult = Mathf.Clamp(dark ? DarkSunMultiplier.Value : LightSunMultiplier.Value, 0.2f, 2.5f);
 		float uiBrightness = Mathf.Clamp(dark ? DarkUiBrightness.Value : LightUiBrightness.Value, 0.4f, 1.35f);
 		bool highContrast = dark ? DarkHighContrastText.Value : LightHighContrastText.Value;
 
@@ -333,23 +344,25 @@ public class Plugin : BaseUnityPlugin
 		{
 			Camera.main.backgroundColor = skyColor;
 		}
+		RenderSettings.ambientLight = ambientColor;
+		RenderSettings.ambientIntensity = _origAmbientIntensity * (dark ? 0.75f : 1.15f);
 
 		bool isMainMenu = activeScene.name == "MainMenu";
 		foreach (var kv in OrigLights)
 		{
 			Light l = kv.Value.Ref;
 			if (l == null) continue;
-			if (Mathf.Approximately(kv.Value.Intensity, 1.5f))
+			if (l.type == LightType.Directional)
 			{
-				l.intensity = sunIntensity;
-			}
-			if (isMainMenu || l.name == "Directional Light")
-			{
-				l.color = sunColor;
-			}
-			else if (l.name == "Directional Light (1)")
-			{
-				l.color = fillColor;
+				l.intensity = kv.Value.Intensity * sunMult;
+				if (isMainMenu || l.name == "Directional Light")
+				{
+					l.color = sunColor;
+				}
+				else
+				{
+					l.color = fillColor;
+				}
 			}
 		}
 
