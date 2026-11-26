@@ -114,8 +114,8 @@ internal static class ModMenuUI
 				Target.parent as RectTransform, eventData.position, null, out Vector2 localPt))
 			{
 				Vector2 next = localPt + _offset;
-				next.x = Mathf.Clamp(next.x, -560f, 560f);
-				next.y = Mathf.Clamp(next.y, -260f, 260f);
+				next.x = Mathf.Clamp(next.x, -240f, 240f);
+				next.y = Mathf.Clamp(next.y, -95f, 95f);
 				Target.anchoredPosition = next;
 			}
 		}
@@ -144,7 +144,8 @@ internal static class ModMenuUI
 	private static readonly Color TextMuted = new Color(0.675f, 0.705f, 0.775f, 1.0f);
 	private static readonly Color BorderSubtle = new Color(0.28f, 0.31f, 0.40f, 0.85f);
 
-	private static Font _uiFont;
+	private static Font _fontRegular;
+	private static Font _fontBold;
 	private static GameObject _canvasObj;
 	private static GameObject _windowObj;
 	private static RectTransform _windowRt;
@@ -252,10 +253,11 @@ internal static class ModMenuUI
 		Canvas canvas = _canvasObj.GetComponent<Canvas>();
 		canvas.renderMode = RenderMode.ScreenSpaceOverlay;
 		canvas.sortingOrder = 500;
+		canvas.pixelPerfect = true;
 
 		CanvasScaler scaler = _canvasObj.GetComponent<CanvasScaler>();
 		scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-		scaler.referenceResolution = new Vector2(1920f, 1080f);
+		scaler.referenceResolution = new Vector2(1280f, 720f);
 		scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
 		scaler.matchWidthOrHeight = 0.5f;
 
@@ -266,26 +268,25 @@ internal static class ModMenuUI
 
 	private static void ResolveFont()
 	{
-		if (_uiFont != null)
+		if (_fontRegular != null)
 		{
 			return;
 		}
-		Font[] fonts = Resources.FindObjectsOfTypeAll<Font>();
-		foreach (Font f in fonts)
+		try
 		{
-			if (f != null && !string.IsNullOrEmpty(f.name) && f.name != "Arial")
-			{
-				_uiFont = f;
-				break;
-			}
+			_fontRegular = Font.CreateDynamicFontFromOSFont(new[] { "Segoe UI", "Calibri", "Verdana", "Arial" }, 16);
+			_fontBold = Font.CreateDynamicFontFromOSFont(new[] { "Segoe UI Semibold", "Segoe UI Bold", "Calibri Bold", "Arial Bold" }, 16);
 		}
-		if (_uiFont == null && fonts.Length > 0)
+		catch
 		{
-			_uiFont = fonts[0];
 		}
-		if (_uiFont == null)
+		if (_fontRegular == null)
 		{
-			_uiFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+			_fontRegular = Resources.GetBuiltinResource<Font>("Arial.ttf");
+		}
+		if (_fontBold == null)
+		{
+			_fontBold = _fontRegular;
 		}
 	}
 
@@ -298,8 +299,8 @@ internal static class ModMenuUI
 		_cornerBtnRt.anchorMin = new Vector2(1f, 1f);
 		_cornerBtnRt.anchorMax = new Vector2(1f, 1f);
 		_cornerBtnRt.pivot = new Vector2(1f, 1f);
-		_cornerBtnRt.anchoredPosition = new Vector2(-30f, -96f);
-		_cornerBtnRt.sizeDelta = new Vector2(68f, 30f);
+		_cornerBtnRt.anchoredPosition = new Vector2(-18f, -68f);
+		_cornerBtnRt.sizeDelta = new Vector2(68f, 26f);
 
 		Image img = _cornerBtnObj.GetComponent<Image>();
 		img.color = BgHeader;
@@ -324,10 +325,10 @@ internal static class ModMenuUI
 		_windowRt.anchorMin = new Vector2(0.5f, 0.5f);
 		_windowRt.anchorMax = new Vector2(0.5f, 0.5f);
 		_windowRt.pivot = new Vector2(0.5f, 0.5f);
-		_windowRt.sizeDelta = new Vector2(820f, 600f);
+		_windowRt.sizeDelta = new Vector2(780f, 520f);
 		_windowRt.anchoredPosition = new Vector2(
-			Mathf.Clamp(Plugin.WindowPosX.Value, -560f, 560f),
-			Mathf.Clamp(Plugin.WindowPosY.Value, -260f, 260f));
+			Mathf.Clamp(Plugin.WindowPosX.Value, -240f, 240f),
+			Mathf.Clamp(Plugin.WindowPosY.Value, -95f, 95f));
 
 		Image winBg = _windowObj.GetComponent<Image>();
 		winBg.color = BgWindow;
@@ -349,18 +350,18 @@ internal static class ModMenuUI
 		WindowDragger dragger = header.AddComponent<WindowDragger>();
 		dragger.Target = _windowRt;
 
-		Text titleTxt = CreateText(hdrRt, "Rogue Tower Mod Menu", 19, FontStyle.Bold, GoldAccent, TextAnchor.MiddleLeft);
+		Text titleTxt = CreateText(hdrRt, "Rogue Tower Mod Menu", 16, FontStyle.Bold, GoldAccent, TextAnchor.MiddleLeft);
 		titleTxt.rectTransform.anchorMin = new Vector2(0f, 0f);
 		titleTxt.rectTransform.anchorMax = new Vector2(0f, 1f);
 		titleTxt.rectTransform.pivot = new Vector2(0f, 0.5f);
-		titleTxt.rectTransform.anchoredPosition = new Vector2(16f, 0f);
-		titleTxt.rectTransform.sizeDelta = new Vector2(240f, 0f);
+		titleTxt.rectTransform.anchoredPosition = new Vector2(14f, 0f);
+		titleTxt.rectTransform.sizeDelta = new Vector2(212f, 0f);
 
 		_statusPillText = CreateText(hdrRt, "", 12, FontStyle.Normal, TextMuted, TextAnchor.MiddleRight);
 		_statusPillText.rectTransform.anchorMin = new Vector2(0f, 0f);
 		_statusPillText.rectTransform.anchorMax = new Vector2(1f, 1f);
-		_statusPillText.rectTransform.offsetMin = new Vector2(248f, 0f);
-		_statusPillText.rectTransform.offsetMax = new Vector2(-316f, 0f);
+		_statusPillText.rectTransform.offsetMin = new Vector2(226f, 0f);
+		_statusPillText.rectTransform.offsetMax = new Vector2(-312f, 0f);
 
 		Button rotLeftBtn = CreateSimpleButton(hdrRt, "<90", Vector2.zero, new Vector2(34f, 28f), BgButton, TextLight, 11, () =>
 		{
@@ -723,7 +724,7 @@ internal static class ModMenuUI
 	{
 		AddSectionHeader("Core Cheats");
 
-		Transform grid = AddGrid(2, 340f, 36f, 8f);
+		Transform grid = AddGrid(2, 356f, 34f, 8f);
 
 		AddToggleTile(grid, "Infinite Money", () => Plugin.InfiniteMoney.Value, v =>
 		{
@@ -859,7 +860,7 @@ internal static class ModMenuUI
 		}
 
 		AddSectionHeader("Cheat Tower Loadouts & Hotbar Grants");
-		Transform optGrid = AddGrid(2, 340f, 34f, 8f);
+		Transform optGrid = AddGrid(2, 356f, 34f, 8f);
 		AddToggleTile(optGrid, ModuleBridge.HasCleanQoL ? "Auto-Sort Hotbar (via QoL)" : "Auto-Sort Hotbar Order", () => ModuleBridge.GetQoLAutoSortHotbar(), v =>
 		{
 			ModuleBridge.SetQoLAutoSortHotbar(v);
@@ -1343,7 +1344,7 @@ internal static class ModMenuUI
 			svlg.childControlHeight = true;
 			svlg.childForceExpandWidth = true;
 
-			Transform subGrid = AddGrid(2, 340f, 30f, 6f, subBox.transform);
+			Transform subGrid = AddGrid(2, 348f, 30f, 6f, subBox.transform);
 			foreach (CardCatalogEntry root in group.BranchRoots)
 			{
 				CreateSimpleButton(subGrid, $"Give Branch: {root.Title}", Vector2.zero, Vector2.zero, GoldSoft, GoldAccent, 12, () =>
@@ -1373,19 +1374,20 @@ internal static class ModMenuUI
 
 		if (ModuleBridge.HasSpeedControls)
 		{
-			Transform spGrid = AddGrid(2, 340f, 34f, 8f);
+			Transform spGrid = AddGrid(2, 356f, 34f, 8f);
 			AddPluginConfigToggle(spGrid, "Remember Speed Between Runs", ModuleBridge.Keys.SpeedControls, "General", "RememberSpeedBetweenLoads");
 			AddPluginConfigToggle(spGrid, "Allow Building While Paused", ModuleBridge.Keys.SpeedControls, "General", "AllowBuildingWhilePaused");
 			AddPluginConfigToggle(spGrid, "Cap Speed to 1x on Expand", ModuleBridge.Keys.SpeedControls, "General", "ResetSpeedOnExpand");
 		}
 
-		// 2. Non-Cheat QoL Suite (RogueTowerQoL v2.0.0)
+		// 2. Non-Cheat QoL Suite (RogueTowerQoL v2.1.0)
 		if (ModuleBridge.HasCleanQoL)
 		{
-			AddSectionHeader("Quality of Life (RogueTowerQoL v2.0)");
-			Transform cqGrid = AddGrid(2, 340f, 34f, 8f);
+			AddSectionHeader("Quality of Life (RogueTowerQoL v2.1)");
+			Transform cqGrid = AddGrid(2, 356f, 34f, 8f);
 			AddPluginConfigToggle(cqGrid, "Hotbar Auto-Sort", ModuleBridge.Keys.CleanQoL, "5. Hotbar Sorting", "AutoSortHotbar", () => HotbarAndLoadoutManager.ForceRefreshHotbar());
-			AddPluginConfigToggle(cqGrid, "Show 'Sort Bar' Hotbar Button", ModuleBridge.Keys.CleanQoL, "5. Hotbar Sorting", "ShowHotbarSortButton");
+			AddPluginConfigToggle(cqGrid, "Hotbar Drag-and-Drop Sorting", ModuleBridge.Keys.CleanQoL, "5. Hotbar Sorting", "EnableHotbarDragAndDrop");
+			AddPluginConfigToggle(cqGrid, "Show 'Edit Bar' Hotbar Button", ModuleBridge.Keys.CleanQoL, "5. Hotbar Sorting", "ShowHotbarSortButton");
 			AddPluginConfigToggle(cqGrid, "Tower Hold & +10 Snap Panel", ModuleBridge.Keys.CleanQoL, "6. Tower Fast Upgrades", "EnableTowerFastUpgrade");
 			AddCycleTile(cqGrid, "Hold Upgrade Speed", () =>
 			{
@@ -1424,7 +1426,7 @@ internal static class ModMenuUI
 			AddPluginConfigToggle(cqGrid, "Hold LeftAlt Cutaway & Deep Select", ModuleBridge.Keys.CleanQoL, "7. Camera & Occluded Placement", "EnableAltCutaway");
 			AddActionRow("QoL Tools", new (string, Action)[]
 			{
-				("Open Hotbar Order Popup", () =>
+				("Open Hotbar Drag & Layout Bar", () =>
 				{
 					if (!CheatActions.IsInGameRun) { ShowToast("Start a run to reorder the in-game hotbar."); return; }
 					ModuleBridge.SetQoLHotbarSortOpen(true);
@@ -1436,7 +1438,7 @@ internal static class ModMenuUI
 		if (ModuleBridge.HasQuickTree)
 		{
 			AddSectionHeader("Quick Research Tree & Auto-Max");
-			Transform qtGrid = AddGrid(2, 340f, 34f, 8f);
+			Transform qtGrid = AddGrid(2, 356f, 34f, 8f);
 
 			AddCycleTile(qtGrid, "In-Game Auto-Max Mode", () => ModuleBridge.GetAutoMaxMode() switch
 			{
@@ -1461,7 +1463,7 @@ internal static class ModMenuUI
 		if (ModuleBridge.HasCustomMaps)
 		{
 			AddSectionHeader("Custom Maps");
-			Transform cmGrid = AddGrid(2, 340f, 34f, 8f);
+			Transform cmGrid = AddGrid(2, 356f, 34f, 8f);
 			string[] presets = ModuleBridge.GetMapPresetNames();
 			AddCycleTile(cmGrid, "Next Run Map", () =>
 			{
@@ -1484,7 +1486,7 @@ internal static class ModMenuUI
 		if (ModuleBridge.HasLevelsToRpm)
 		{
 			AddSectionHeader("Levels to RPM");
-			Transform rpmGrid = AddGrid(2, 340f, 34f, 8f);
+			Transform rpmGrid = AddGrid(2, 356f, 34f, 8f);
 			AddPluginConfigToggle(rpmGrid, "Levels to RPM Enabled", ModuleBridge.Keys.LevelsToRpm, "General", "Enabled", () => ModuleBridge.RefreshLevelsToRpmTowers());
 			float[] rpmVals = { 0.05f, 0.07f, 0.10f, 0.15f, 0.25f };
 			AddCycleTile(rpmGrid, "RPM Bonus / Level", () =>
@@ -1505,7 +1507,7 @@ internal static class ModMenuUI
 		if (ModuleBridge.IsLoaded(ModuleBridge.Keys.LagFix))
 		{
 			AddSectionHeader("Late-Game Lag Fix");
-			Transform lagGrid = AddGrid(2, 340f, 34f, 8f);
+			Transform lagGrid = AddGrid(2, 356f, 34f, 8f);
 			AddPluginConfigToggle(lagGrid, "Fast-Forward Physics Scale", ModuleBridge.Keys.LagFix, "1. CPU & Targeting", "OptimizeFastForwardPhysics");
 			AddPluginConfigToggle(lagGrid, "Targeting & Component Cache", ModuleBridge.Keys.LagFix, "1. CPU & Targeting", "OptimizeTargetingAndEnemyLookups");
 			AddPluginConfigToggle(lagGrid, "HealthBar & HUD Throttling", ModuleBridge.Keys.LagFix, "2. UI & HealthBars", "OptimizeEnemyHealthBars");
@@ -1517,7 +1519,7 @@ internal static class ModMenuUI
 
 		// 7. QoL, Banish, DarkMode, Progression
 		AddSectionHeader("QoL, Visuals & Progression");
-		Transform miscGrid = AddGrid(2, 340f, 34f, 8f);
+		Transform miscGrid = AddGrid(2, 356f, 34f, 8f);
 
 		if (ModuleBridge.IsLoaded(ModuleBridge.Keys.QoL))
 		{
@@ -1546,7 +1548,7 @@ internal static class ModMenuUI
 		if (ModuleBridge.HasThemes)
 		{
 			AddSectionHeader("Light / Dark Visual Theme (RogueTowerThemes)");
-			Transform thGrid = AddGrid(2, 340f, 34f, 8f);
+			Transform thGrid = AddGrid(2, 356f, 34f, 8f);
 			AddCycleTile(thGrid, "Active Visual Theme", () => ModuleBridge.GetThemeModeName(), () =>
 			{
 				int next = (ModuleBridge.GetThemeMode() + 1) % 3;
@@ -1591,7 +1593,7 @@ internal static class ModMenuUI
 
 		// 8. Test Harness
 		AddSectionHeader("Focusless CLI Test Harness");
-		Transform camGrid = AddGrid(2, 340f, 34f, 8f);
+		Transform camGrid = AddGrid(2, 356f, 34f, 8f);
 		AddToggleTile(camGrid, "Focusless Test Server (127.0.0.1)", () => Plugin.EnableTestServer.Value, v =>
 		{
 			Plugin.EnableTestServer.Value = v;
@@ -1611,7 +1613,7 @@ internal static class ModMenuUI
 
 		// 9. Mod Menu Settings
 		AddSectionHeader("Mod Menu Settings");
-		Transform mmGrid = AddGrid(2, 340f, 34f, 8f);
+		Transform mmGrid = AddGrid(2, 356f, 34f, 8f);
 		KeyCode[] hotkeys = { KeyCode.BackQuote, KeyCode.F1, KeyCode.F4, KeyCode.F8, KeyCode.F9, KeyCode.Backslash };
 		AddCycleTile(mmGrid, "Mod Menu Hotkey", () => FormatKey(Plugin.MenuHotkey.Value), () =>
 		{
@@ -1843,10 +1845,11 @@ internal static class ModMenuUI
 		GameObject obj = new GameObject("Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
 		obj.transform.SetParent(parent, worldPositionStays: false);
 		Text t = obj.GetComponent<Text>();
-		t.font = _uiFont;
+		bool useDedicatedBold = style == FontStyle.Bold && _fontBold != null && _fontBold != _fontRegular;
+		t.font = useDedicatedBold ? _fontBold : _fontRegular;
 		t.text = text;
 		t.fontSize = fontSize;
-		t.fontStyle = style;
+		t.fontStyle = useDedicatedBold ? FontStyle.Normal : style;
 		t.color = color;
 		t.alignment = align;
 		t.horizontalOverflow = HorizontalWrapMode.Wrap;

@@ -13,11 +13,11 @@ using UnityEngine.UI;
 [assembly: AssemblyCompany("RogueTowerCustomMaps")]
 [assembly: AssemblyConfiguration("Release")]
 [assembly: AssemblyDescription("Clean-room custom map generator for Rogue Tower with Play Menu preset cycling, non-destructive tile pool restoration, and a built-in In-Game Custom Map Sequence Builder UI. Inspired by acr-Rogue_Tower_Custom_Maps.")]
-[assembly: AssemblyFileVersion("1.3.0.0")]
-[assembly: AssemblyInformationalVersion("1.3.0")]
+[assembly: AssemblyFileVersion("1.3.1.0")]
+[assembly: AssemblyInformationalVersion("1.3.1")]
 [assembly: AssemblyProduct("RogueTowerCustomMaps")]
 [assembly: AssemblyTitle("RogueTowerCustomMaps")]
-[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyVersion("1.3.1.0")]
 
 namespace RogueTowerCustomMaps;
 
@@ -26,7 +26,7 @@ public class Plugin : BaseUnityPlugin
 {
 	public const string PluginGuid = "acr.rougetower.custommaps";
 	public const string PluginName = "RogueTowerCustomMaps";
-	public const string PluginVersion = "1.3.0";
+	public const string PluginVersion = "1.3.1";
 
 	internal static Plugin Instance;
 	internal static ManualLogSource Log;
@@ -567,7 +567,8 @@ internal static class CustomMapEditorUI
 	private static readonly Color TextMuted = new Color(0.675f, 0.705f, 0.775f, 1.0f);
 	private static readonly Color BorderSubtle = new Color(0.28f, 0.31f, 0.40f, 0.85f);
 
-	private static Font _uiFont;
+	private static Font _fontRegular;
+	private static Font _fontBold;
 	private static GameObject _canvasObj;
 	private static GameObject _windowObj;
 	private static InputField _csvInput;
@@ -696,10 +697,11 @@ internal static class CustomMapEditorUI
 		Canvas canvas = _canvasObj.GetComponent<Canvas>();
 		canvas.renderMode = RenderMode.ScreenSpaceOverlay;
 		canvas.sortingOrder = 510;
+		canvas.pixelPerfect = true;
 
 		CanvasScaler scaler = _canvasObj.GetComponent<CanvasScaler>();
 		scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-		scaler.referenceResolution = new Vector2(1920f, 1080f);
+		scaler.referenceResolution = new Vector2(1280f, 720f);
 		scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
 		scaler.matchWidthOrHeight = 0.5f;
 
@@ -709,7 +711,7 @@ internal static class CustomMapEditorUI
 		winRt.anchorMax = new Vector2(0.5f, 0.5f);
 		winRt.pivot = new Vector2(0.5f, 0.5f);
 		winRt.anchoredPosition = Vector2.zero;
-		winRt.sizeDelta = new Vector2(680f, 470f);
+		winRt.sizeDelta = new Vector2(640f, 440f);
 
 		Outline ol = _windowObj.AddComponent<Outline>();
 		ol.effectColor = GoldAccent;
@@ -722,12 +724,12 @@ internal static class CustomMapEditorUI
 		hdrRt.anchorMax = new Vector2(1f, 1f);
 		hdrRt.pivot = new Vector2(0.5f, 1f);
 		hdrRt.anchoredPosition = Vector2.zero;
-		hdrRt.sizeDelta = new Vector2(0f, 44f);
+		hdrRt.sizeDelta = new Vector2(0f, 42f);
 
-		Text hdrTxt = CreateText(hdrRt, "In-Game Custom Map Sequence Builder", 17, FontStyle.Bold, GoldAccent, TextAnchor.MiddleLeft);
+		Text hdrTxt = CreateText(hdrRt, "In-Game Custom Map Sequence Builder", 16, FontStyle.Bold, GoldAccent, TextAnchor.MiddleLeft);
 		hdrTxt.rectTransform.anchorMin = Vector2.zero;
 		hdrTxt.rectTransform.anchorMax = Vector2.one;
-		hdrTxt.rectTransform.offsetMin = new Vector2(16f, 0f);
+		hdrTxt.rectTransform.offsetMin = new Vector2(14f, 0f);
 		hdrTxt.rectTransform.offsetMax = new Vector2(-46f, 0f);
 
 		Button closeBtn = CreateSimpleButton(hdrRt, "X", RedDanger, TextLight, 14, Close);
@@ -736,18 +738,18 @@ internal static class CustomMapEditorUI
 		cRt.anchorMax = new Vector2(1f, 0.5f);
 		cRt.pivot = new Vector2(1f, 0.5f);
 		cRt.anchoredPosition = new Vector2(-10f, 0f);
-		cRt.sizeDelta = new Vector2(30f, 28f);
+		cRt.sizeDelta = new Vector2(28f, 26f);
 
 		// Body container
 		GameObject body = CreatePanel("Body", winRt, Color.clear);
 		RectTransform bodyRt = body.GetComponent<RectTransform>();
 		bodyRt.anchorMin = Vector2.zero;
 		bodyRt.anchorMax = Vector2.one;
-		bodyRt.offsetMin = new Vector2(16f, 16f);
-		bodyRt.offsetMax = new Vector2(-16f, -54f);
+		bodyRt.offsetMin = new Vector2(14f, 14f);
+		bodyRt.offsetMax = new Vector2(-14f, -50f);
 
 		VerticalLayoutGroup vlg = body.AddComponent<VerticalLayoutGroup>();
-		vlg.spacing = 10f;
+		vlg.spacing = 8f;
 		vlg.childControlWidth = true;
 		vlg.childControlHeight = true;
 		vlg.childForceExpandWidth = true;
@@ -755,7 +757,7 @@ internal static class CustomMapEditorUI
 
 		// Tile palette
 		AddSectionLabel(body.transform, "CLICK TILES TO APPEND TO QUEUE");
-		Transform grid = AddGrid(body.transform, 4, 156f, 36f, 6f);
+		Transform grid = AddGrid(body.transform, 4, 148f, 34f, 6f);
 		CreateSimpleButton(grid, "+ Straight (S)", BgButton, TextLight, 13, () => AppendToken("S"));
 		CreateSimpleButton(grid, "+ Left (L)", BgButton, TextLight, 13, () => AppendToken("L"));
 		CreateSimpleButton(grid, "+ Right (R)", BgButton, TextLight, 13, () => AppendToken("R"));
@@ -782,7 +784,7 @@ internal static class CustomMapEditorUI
 		// CSV Input
 		AddSectionLabel(body.transform, "CUSTOM TILE SEQUENCE CSV (EDITABLE)");
 		GameObject inputBg = CreatePanel("CsvInputBox", body.transform, BgInput);
-		inputBg.AddComponent<LayoutElement>().preferredHeight = 38f;
+		inputBg.AddComponent<LayoutElement>().preferredHeight = 36f;
 		Outline iOl = inputBg.AddComponent<Outline>();
 		iOl.effectColor = BorderSubtle;
 		iOl.effectDistance = new Vector2(1f, -1f);
@@ -798,18 +800,18 @@ internal static class CustomMapEditorUI
 
 		// Preview box
 		GameObject prevBox = CreatePanel("PreviewBox", body.transform, BgCard);
-		prevBox.AddComponent<LayoutElement>().preferredHeight = 110f;
+		prevBox.AddComponent<LayoutElement>().preferredHeight = 96f;
 		Outline pOl = prevBox.AddComponent<Outline>();
 		pOl.effectColor = BorderSubtle;
 		pOl.effectDistance = new Vector2(1f, -1f);
 
-		_previewText = CreateText(prevBox.transform, "", 12, FontStyle.Normal, TextLight, TextAnchor.UpperLeft);
+		_previewText = CreateText(prevBox.transform, "", 13, FontStyle.Normal, TextLight, TextAnchor.UpperLeft);
 		_previewText.supportRichText = true;
 		StretchFill(_previewText.rectTransform, 10f, 8f, 10f, 8f);
 
 		// Footer buttons
 		GameObject footerRow = CreatePanel("FooterRow", body.transform, Color.clear);
-		footerRow.AddComponent<LayoutElement>().preferredHeight = 38f;
+		footerRow.AddComponent<LayoutElement>().preferredHeight = 36f;
 		HorizontalLayoutGroup fhlg = footerRow.AddComponent<HorizontalLayoutGroup>();
 		fhlg.spacing = 8f;
 		fhlg.childControlWidth = true;
@@ -820,7 +822,7 @@ internal static class CustomMapEditorUI
 		saveBtn.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
 
 		Button cancelBtn = CreateSimpleButton(footerRow.transform, "Close", BgButton, TextLight, 13, Close);
-		cancelBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = 120f;
+		cancelBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = 110f;
 
 		_windowObj.SetActive(false);
 	}
@@ -847,18 +849,17 @@ internal static class CustomMapEditorUI
 
 	private static void ResolveFont()
 	{
-		if (_uiFont != null) return;
-		Font[] fonts = Resources.FindObjectsOfTypeAll<Font>();
-		foreach (Font f in fonts)
+		if (_fontRegular != null) return;
+		try
 		{
-			if (f != null && !string.IsNullOrEmpty(f.name) && f.name != "Arial")
-			{
-				_uiFont = f;
-				break;
-			}
+			_fontRegular = Font.CreateDynamicFontFromOSFont(new[] { "Segoe UI", "Calibri", "Verdana", "Arial" }, 16);
+			_fontBold = Font.CreateDynamicFontFromOSFont(new[] { "Segoe UI Semibold", "Segoe UI Bold", "Calibri Bold", "Arial Bold" }, 16);
 		}
-		if (_uiFont == null && fonts.Length > 0) _uiFont = fonts[0];
-		if (_uiFont == null) _uiFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+		catch
+		{
+		}
+		if (_fontRegular == null) _fontRegular = Resources.GetBuiltinResource<Font>("Arial.ttf");
+		if (_fontBold == null) _fontBold = _fontRegular;
 	}
 
 	private static GameObject CreatePanel(string name, Transform parent, Color color)
@@ -892,10 +893,11 @@ internal static class CustomMapEditorUI
 		GameObject obj = new GameObject("Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
 		obj.transform.SetParent(parent, worldPositionStays: false);
 		Text t = obj.GetComponent<Text>();
-		t.font = _uiFont;
+		bool useDedicatedBold = style == FontStyle.Bold && _fontBold != null && _fontBold != _fontRegular;
+		t.font = useDedicatedBold ? _fontBold : _fontRegular;
 		t.text = text;
 		t.fontSize = fontSize;
-		t.fontStyle = style;
+		t.fontStyle = useDedicatedBold ? FontStyle.Normal : style;
 		t.color = color;
 		t.alignment = align;
 		t.horizontalOverflow = HorizontalWrapMode.Wrap;

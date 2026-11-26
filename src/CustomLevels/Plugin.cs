@@ -10,11 +10,11 @@ using UnityEngine.SceneManagement;
 [assembly: AssemblyCompany("RogueTowerModMenu")]
 [assembly: AssemblyConfiguration("Release")]
 [assembly: AssemblyDescription("Cheat Mod Menu (` / F6) for Rogue Tower: sandbox cheats, Give/Lock Towers & 5 Saved Loadouts, Give Cards & Card Trees, Live Modules Dashboard, Endgame Level-40 Benchmark Scenes & DeepLagProfiler, and loopback test harness. Non-cheat QoL lives in RogueTowerQoL.")]
-[assembly: AssemblyFileVersion("2.5.0.0")]
-[assembly: AssemblyInformationalVersion("2.5.0")]
+[assembly: AssemblyFileVersion("2.5.1.0")]
+[assembly: AssemblyInformationalVersion("2.5.1")]
 [assembly: AssemblyProduct("RogueTowerModMenu")]
 [assembly: AssemblyTitle("RogueTowerQuickChests")]
-[assembly: AssemblyVersion("2.5.0.0")]
+[assembly: AssemblyVersion("2.5.1.0")]
 
 namespace RogueTowerCustomLevels;
 
@@ -31,7 +31,7 @@ public class Plugin : BaseUnityPlugin
 {
 	public const string PluginGuid = "Rosie.RogueTowerCustomLevels";
 	public const string PluginName = "RogueTowerQuickChests";
-	public const string PluginVersion = "2.5.0";
+	public const string PluginVersion = "2.5.1";
 
 	internal static ManualLogSource Log;
 

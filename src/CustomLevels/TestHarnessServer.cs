@@ -509,6 +509,37 @@ internal static class TestHarnessServer
 				break;
 			}
 
+			case "simulate_hotbar_drag":
+			{
+				cmd.Params.TryGetValue("id", out string id);
+				int idx = 0;
+				if (cmd.Params.TryGetValue("index", out string iStr)) int.TryParse(iStr, out idx);
+				bool all = cmd.Params.TryGetValue("all", out string aStr) && string.Equals(aStr, "true", StringComparison.OrdinalIgnoreCase);
+				bool ok = ModuleBridge.MoveQoLHotbarItemToIndex(id, idx, all);
+				if (ModMenuUI.IsMenuOpen) ModMenuUI.RefreshOpenTabPublic();
+				cmd.ResponseJson = $"{{\"ok\":{(ok ? "true" : "false")}}}";
+				break;
+			}
+
+			case "save_hotbar_preset":
+			{
+				int slot = 1;
+				if (cmd.Params.TryGetValue("slot", out string sStr)) int.TryParse(sStr, out slot);
+				bool ok = ModuleBridge.SaveQoLHotbarPreset(Mathf.Clamp(slot, 1, 3));
+				cmd.ResponseJson = $"{{\"ok\":{(ok ? "true" : "false")},\"slot\":{Mathf.Clamp(slot, 1, 3)}}}";
+				break;
+			}
+
+			case "load_hotbar_preset":
+			{
+				int slot = 1;
+				if (cmd.Params.TryGetValue("slot", out string sStr)) int.TryParse(sStr, out slot);
+				bool ok = ModuleBridge.LoadQoLHotbarPreset(Mathf.Clamp(slot, 1, 3));
+				if (ModMenuUI.IsMenuOpen) ModMenuUI.RefreshOpenTabPublic();
+				cmd.ResponseJson = $"{{\"ok\":{(ok ? "true" : "false")},\"slot\":{Mathf.Clamp(slot, 1, 3)}}}";
+				break;
+			}
+
 			case "open_map_editor":
 			{
 				bool ok = ModuleBridge.OpenCustomMapEditor();

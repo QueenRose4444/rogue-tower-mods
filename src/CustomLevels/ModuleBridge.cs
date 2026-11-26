@@ -194,6 +194,9 @@ internal static class ModuleBridge
 	internal static string GetQoLTowerHotbarOrderCsv(string fallback) => InvokeStatic(GuidCleanQoL, "GetTowerHotbarOrderCsv", fallback);
 	internal static string GetQoLBuildingHotbarOrderCsv(string fallback) => InvokeStatic(GuidCleanQoL, "GetBuildingHotbarOrderCsv", fallback);
 	internal static bool MoveQoLHotbarItem(string id, int delta) => InvokeStaticVoid(GuidCleanQoL, "MoveHotbarItem", id, delta);
+	internal static bool MoveQoLHotbarItemToIndex(string id, int targetIndex, bool amongAllSlots) => InvokeStatic(GuidCleanQoL, "MoveHotbarItemToIndex", false, id, targetIndex, amongAllSlots);
+	internal static bool SaveQoLHotbarPreset(int slot) => InvokeStaticVoid(GuidCleanQoL, "SaveHotbarPreset", slot);
+	internal static bool LoadQoLHotbarPreset(int slot) => InvokeStatic(GuidCleanQoL, "LoadHotbarPreset", false, slot);
 	internal static bool ResetQoLHotbarOrder() => InvokeStaticVoid(GuidCleanQoL, "ResetHotbarOrder");
 	internal static bool ForceRefreshQoLHotbar() => InvokeStaticVoid(GuidCleanQoL, "ForceRefreshHotbar");
 	internal static bool SetQoLHotbarSortOpen(bool open) => InvokeStaticVoid(GuidCleanQoL, "SetHotbarSortOpen", open);

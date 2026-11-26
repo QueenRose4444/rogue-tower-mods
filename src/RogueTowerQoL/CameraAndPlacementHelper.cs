@@ -123,7 +123,8 @@ internal static class CameraAndPlacementPatches
 		}
 		if (BuildingManager.instance.buildMode ||
 			QuickHudManager.IsPointerOverQuickButton() ||
-			HotbarSortOverlayUI.IsPointerOverOverlay ||
+			HotbarEditBarUI.IsPointerOverOverlay ||
+			HotbarSorter.IsDraggingSlot ||
 			(EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()))
 		{
 			return true;

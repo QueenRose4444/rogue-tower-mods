@@ -19,7 +19,7 @@ internal static class QoLInputBlockerPatches
 	[HarmonyPrefix]
 	private static bool UIManager_Update_Prefix()
 	{
-		if (QuickHudManager.IsPointerOverQuickButton() || HotbarSortOverlayUI.IsPointerOverOverlay)
+		if (QuickHudManager.IsPointerOverQuickButton() || HotbarEditBarUI.IsPointerOverOverlay || HotbarSorter.IsDraggingSlot)
 		{
 			return false;
 		}
@@ -30,7 +30,7 @@ internal static class QoLInputBlockerPatches
 	[HarmonyPrefix]
 	private static bool BuildingManager_Update_Prefix()
 	{
-		if (HotbarSortOverlayUI.IsPointerOverOverlay)
+		if (HotbarEditBarUI.IsPointerOverOverlay || HotbarSorter.IsDraggingSlot)
 		{
 			return false;
 		}
@@ -41,7 +41,7 @@ internal static class QoLInputBlockerPatches
 	[HarmonyPrefix]
 	private static bool CameraController_UpdateZoom_Prefix()
 	{
-		if (HotbarSortOverlayUI.IsPointerOverOverlay)
+		if (HotbarEditBarUI.IsPointerOverOverlay || HotbarSorter.IsDraggingSlot)
 		{
 			return false;
 		}
@@ -52,9 +52,9 @@ internal static class QoLInputBlockerPatches
 	[HarmonyPrefix]
 	private static bool PauseMenu_Update_Prefix()
 	{
-		if (HotbarSortOverlayUI.IsOpen && Input.GetKeyDown(KeyCode.Escape))
+		if (HotbarEditBarUI.IsOpen && Input.GetKeyDown(KeyCode.Escape))
 		{
-			HotbarSortOverlayUI.SetOpen(false);
+			HotbarEditBarUI.SetOpen(false);
 			return false;
 		}
 		return true;

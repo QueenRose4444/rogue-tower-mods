@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -36,6 +37,192 @@ internal static class HotbarSorterPatches
 			HotbarSorter.SortManagerLists(__instance);
 		}
 	}
+
+	[HarmonyPatch(typeof(TowerUnlockManager), "DisplayButtons")]
+	[HarmonyPostfix]
+	private static void TowerUnlockManager_DisplayButtons_Postfix(TowerUnlockManager __instance)
+	{
+		HotbarSorter.ApplyPreviewOrRestoreLayout(__instance);
+	}
+
+	[HarmonyPatch(typeof(BuildButtonUI), nameof(BuildButtonUI.Build))]
+	[HarmonyPrefix]
+	private static bool BuildButtonUI_Build_Prefix()
+	{
+		if (HotbarEditBarUI.IsOpen || HotbarSorter.IsDraggingSlot || Time.frameCount <= HotbarSorter.SuppressBuildUntilFrame)
+		{
+			return false;
+		}
+		return true;
+	}
+}
+
+internal sealed class HotbarSlotDragHandler : MonoBehaviour,
+	IPointerDownHandler,
+	IBeginDragHandler,
+	IDragHandler,
+	IEndDragHandler,
+	IPointerEnterHandler,
+	IPointerExitHandler
+{
+	private static readonly MethodInfo ExitBuildModeMethod =
+		typeof(BuildingManager).GetMethod("ExitBuildMode", BindingFlags.Instance | BindingFlags.NonPublic);
+
+	internal HotbarItemInfo ItemInfo;
+
+	private bool _dragging;
+	private int _targetIndex = -1;
+	private List<HotbarItemInfo> _visibleRowItems;
+	private float _rowY;
+	private float _step = 100f;
+	private float _baseScale = 1f;
+	private RectTransform _parentRt;
+
+	public void OnPointerEnter(PointerEventData eventData)
+	{
+		if (ItemInfo == null) return;
+		if (!HotbarSorter.IsDraggingSlot && HotbarEditBarUI.IsOpen)
+		{
+			int idx = HotbarSorter.GetVisibleIndex(ItemInfo, out int total);
+			HotbarEditBarUI.SetActiveItem(ItemInfo, idx + 1, total, isDragging: false);
+		}
+	}
+
+	public void OnPointerExit(PointerEventData eventData)
+	{
+		if (!_dragging && HotbarEditBarUI.IsOpen && HotbarEditBarUI.HoveredOrSelected == ItemInfo)
+		{
+			HotbarEditBarUI.RefreshStatusFromSelection();
+		}
+	}
+
+	public void OnPointerDown(PointerEventData eventData)
+	{
+		if (ItemInfo == null || eventData == null) return;
+		if (HotbarEditBarUI.IsOpen)
+		{
+			int idx = HotbarSorter.GetVisibleIndex(ItemInfo, out int total);
+			HotbarEditBarUI.SelectItem(ItemInfo, idx + 1, total);
+		}
+	}
+
+	public void OnBeginDrag(PointerEventData eventData)
+	{
+		if (ItemInfo == null || eventData == null) return;
+		if (eventData.button != PointerEventData.InputButton.Left && eventData.button != PointerEventData.InputButton.Right)
+		{
+			return;
+		}
+		if (!HotbarSorter.CanDragSlot())
+		{
+			return;
+		}
+
+		_parentRt = transform.parent as RectTransform;
+		if (_parentRt == null) return;
+
+		_visibleRowItems = HotbarSorter.GetCurrentlyDisplayedRowItems(ItemInfo.IsTower);
+		if (_visibleRowItems == null || _visibleRowItems.Count <= 1)
+		{
+			return;
+		}
+
+		_dragging = true;
+		HotbarSorter.IsDraggingSlot = true;
+		HotbarSorter.SuppressBuildUntilFrame = Time.frameCount + 2;
+
+		// Cancel build mode if clicking a slot started it cleanly
+		if (BuildingManager.instance != null && BuildingManager.instance.buildMode)
+		{
+			ExitBuildModeMethod?.Invoke(BuildingManager.instance, null);
+		}
+
+		_rowY = HotbarSorter.GetRowY(ItemInfo.IsTower);
+		_step = HotbarSorter.GetRowStep(ItemInfo.IsTower, _visibleRowItems.Count);
+		_baseScale = HotbarSorter.GetSlotBaseScale(ItemInfo.IsTower, _visibleRowItems.Count);
+		_targetIndex = _visibleRowItems.IndexOf(ItemInfo);
+		if (_targetIndex < 0) _targetIndex = 0;
+
+		float dragScale = _baseScale * 1.14f;
+		transform.localScale = new Vector3(dragScale, dragScale, 1f);
+		transform.SetAsLastSibling();
+		HotbarEditBarUI.SelectItem(ItemInfo, _targetIndex + 1, _visibleRowItems.Count, isDragging: true);
+	}
+
+	public void OnDrag(PointerEventData eventData)
+	{
+		if (!_dragging || _parentRt == null || _visibleRowItems == null || _visibleRowItems.Count == 0)
+		{
+			return;
+		}
+
+		HotbarSorter.SuppressBuildUntilFrame = Time.frameCount + 2;
+		if (RectTransformUtility.ScreenPointToLocalPointInRectangle(_parentRt, eventData.position, eventData.pressEventCamera, out Vector2 localPt))
+		{
+			int count = _visibleRowItems.Count;
+			float rawSlot = (localPt.x + count * _step * 0.5f - _step * 0.5f) / _step;
+			_targetIndex = Mathf.Clamp(Mathf.RoundToInt(rawSlot), 0, count - 1);
+
+			float minX = -count * _step * 0.5f - _step * 0.25f;
+			float maxX = count * _step * 0.5f + _step * 0.25f;
+			float clampedX = Mathf.Clamp(localPt.x, minX, maxX);
+			transform.localPosition = new Vector3(clampedX, _rowY + 12f, 0f);
+
+			LayoutOtherItemsWithGap();
+			HotbarEditBarUI.SelectItem(ItemInfo, _targetIndex + 1, count, isDragging: true);
+		}
+	}
+
+	public void OnEndDrag(PointerEventData eventData)
+	{
+		FinishDrag(commit: true);
+	}
+
+	private void OnDisable()
+	{
+		if (_dragging) FinishDrag(commit: false);
+	}
+
+	private void OnDestroy()
+	{
+		if (_dragging) FinishDrag(commit: false);
+	}
+
+	private void FinishDrag(bool commit)
+	{
+		if (!_dragging) return;
+		_dragging = false;
+		HotbarSorter.IsDraggingSlot = false;
+		HotbarSorter.SuppressBuildUntilFrame = Time.frameCount + 3;
+		transform.localScale = new Vector3(_baseScale, _baseScale, 1f);
+
+		if (commit && ItemInfo != null && _visibleRowItems != null && _targetIndex >= 0)
+		{
+			HotbarSorter.ReorderSlotToVisibleIndex(ItemInfo, _targetIndex, _visibleRowItems);
+			SFXManager.instance?.ButtonClick();
+		}
+		else
+		{
+			HotbarSorter.ForceRefreshHotbar();
+		}
+
+		_visibleRowItems = null;
+	}
+
+	private void LayoutOtherItemsWithGap()
+	{
+		int count = _visibleRowItems.Count;
+		int slot = 0;
+		for (int i = 0; i < count; i++)
+		{
+			HotbarItemInfo other = _visibleRowItems[i];
+			if (other == null || other == ItemInfo || other.UIObject == null) continue;
+			if (slot == _targetIndex) slot++;
+			float x = slot * _step - count * _step * 0.5f + _step * 0.5f;
+			other.UIObject.transform.localPosition = new Vector3(x, _rowY, 0f);
+			slot++;
+		}
+	}
 }
 
 internal static class HotbarSorter
@@ -59,13 +246,27 @@ internal static class HotbarSorter
 		AccessTools.FieldRefAccess<TowerUnlockCard, bool>("isTower");
 	private static readonly AccessTools.FieldRef<UpgradeCard, string> UnlockNameRef =
 		AccessTools.FieldRefAccess<UpgradeCard, string>("unlockName");
+	private static readonly AccessTools.FieldRef<CardManager, List<UpgradeCard>> AvailableCardsRef =
+		AccessTools.FieldRefAccess<CardManager, List<UpgradeCard>>("availableCards");
+	private static readonly AccessTools.FieldRef<CardManager, List<UpgradeCard>> StartCardsCheckRef =
+		AccessTools.FieldRefAccess<CardManager, List<UpgradeCard>>("startCardsCheck");
 
 	private static readonly Dictionary<string, HotbarItemInfo> ItemsById = new Dictionary<string, HotbarItemInfo>(StringComparer.OrdinalIgnoreCase);
 	private static readonly Dictionary<GameObject, HotbarItemInfo> ItemsByUI = new Dictionary<GameObject, HotbarItemInfo>();
 	private static bool _initialized;
 
+	internal static bool IsDraggingSlot;
+	internal static int SuppressBuildUntilFrame;
+
+	internal static bool CanDragSlot()
+	{
+		return Plugin.EnableHotbarDragAndDrop.Value || HotbarEditBarUI.IsOpen;
+	}
+
 	internal static void OnSceneChanged()
 	{
+		IsDraggingSlot = false;
+		SuppressBuildUntilFrame = 0;
 		ItemsById.Clear();
 		ItemsByUI.Clear();
 		_initialized = false;
@@ -111,40 +312,85 @@ internal static class HotbarSorter
 			}
 		}
 
-		TowerUnlockCard[] cards = Resources.FindObjectsOfTypeAll<TowerUnlockCard>();
-		foreach (TowerUnlockCard card in cards)
+		HashSet<UpgradeCard> visited = new HashSet<UpgradeCard>();
+		Queue<UpgradeCard> bfs = new Queue<UpgradeCard>();
+		List<TowerUnlockCard> sceneUnlockCards = new List<TowerUnlockCard>();
+		List<TowerUnlockCard> fallbackUnlockCards = new List<TowerUnlockCard>();
+
+		void EnqueueCard(UpgradeCard c)
 		{
-			if (card == null || !card.gameObject.scene.IsValid())
+			if (c != null && visited.Add(c))
 			{
-				continue;
+				bfs.Enqueue(c);
 			}
-			GameObject uiObj = CardUIObjectRef(card);
-			if (uiObj == null || ItemsByUI.ContainsKey(uiObj))
-			{
-				continue;
-			}
-
-			bool isTower = CardIsTowerRef(card);
-			BuildButtonUI bbu = uiObj.GetComponentInChildren<BuildButtonUI>(includeInactive: true);
-			TowerType? tt = null;
-			if (bbu != null)
-			{
-				tt = AccessTools.FieldRefAccess<BuildButtonUI, TowerType>("myTowerType")(bbu);
-			}
-
-			string id = ResolveCanonicalId(card, uiObj, tt);
-			(string disp, string nick) = GetFriendlyNames(id, card.title);
-
-			RegisterItem(new HotbarItemInfo
-			{
-				Id = id,
-				DisplayName = disp,
-				Nickname = nick,
-				IsTower = isTower,
-				TowerType = tt,
-				UIObject = uiObj
-			});
 		}
+
+		foreach (TowerUnlockCard tc in Resources.FindObjectsOfTypeAll<TowerUnlockCard>())
+		{
+			EnqueueCard(tc);
+		}
+		if (CardManager.instance != null)
+		{
+			List<UpgradeCard> startCards = StartCardsCheckRef(CardManager.instance);
+			if (startCards != null) foreach (UpgradeCard c in startCards) EnqueueCard(c);
+			List<UpgradeCard> availCards = AvailableCardsRef(CardManager.instance);
+			if (availCards != null) foreach (UpgradeCard c in availCards) EnqueueCard(c);
+		}
+		foreach (UpgradeCard c in Resources.FindObjectsOfTypeAll<UpgradeCard>())
+		{
+			if (c != null && c.gameObject.scene.IsValid()) EnqueueCard(c);
+		}
+
+		while (bfs.Count > 0)
+		{
+			UpgradeCard cur = bfs.Dequeue();
+			if (cur is TowerUnlockCard tuc)
+			{
+				if (tuc.gameObject.scene.IsValid()) sceneUnlockCards.Add(tuc);
+				else fallbackUnlockCards.Add(tuc);
+			}
+			if (cur.unlocks != null)
+			{
+				foreach (UpgradeCard child in cur.unlocks) EnqueueCard(child);
+			}
+		}
+
+		void ProcessUnlockCards(List<TowerUnlockCard> cardsList)
+		{
+			foreach (TowerUnlockCard card in cardsList)
+			{
+				if (card == null) continue;
+				GameObject uiObj = CardUIObjectRef(card);
+				if (uiObj == null || !uiObj.scene.IsValid() || ItemsByUI.ContainsKey(uiObj))
+				{
+					continue;
+				}
+
+				bool isTower = CardIsTowerRef(card);
+				BuildButtonUI bbu = uiObj.GetComponentInChildren<BuildButtonUI>(includeInactive: true);
+				TowerType? tt = null;
+				if (bbu != null)
+				{
+					tt = AccessTools.FieldRefAccess<BuildButtonUI, TowerType>("myTowerType")(bbu);
+				}
+
+				string id = ResolveCanonicalId(card, uiObj, isTower, tt);
+				(string disp, string nick) = GetFriendlyNames(id, card.title);
+
+				RegisterItem(new HotbarItemInfo
+				{
+					Id = id,
+					DisplayName = disp,
+					Nickname = nick,
+					IsTower = isTower,
+					TowerType = tt,
+					UIObject = uiObj
+				});
+			}
+		}
+
+		ProcessUnlockCards(sceneUnlockCards);
+		ProcessUnlockCards(fallbackUnlockCards);
 	}
 
 	private static void RegisterItem(HotbarItemInfo info)
@@ -155,10 +401,37 @@ internal static class HotbarSorter
 		}
 		ItemsById[info.Id] = info;
 		ItemsByUI[info.UIObject] = info;
+
+		HotbarSlotDragHandler handler = info.UIObject.GetComponent<HotbarSlotDragHandler>();
+		if (handler == null)
+		{
+			handler = info.UIObject.AddComponent<HotbarSlotDragHandler>();
+		}
+		handler.ItemInfo = info;
 	}
 
-	private static string ResolveCanonicalId(TowerUnlockCard card, GameObject uiObj, TowerType? tt)
+	private static string ResolveCanonicalId(TowerUnlockCard card, GameObject uiObj, bool isTower, TowerType? tt)
 	{
+		string un = (UnlockNameRef(card) ?? string.Empty).Replace(" ", "");
+		string title = (card.title ?? string.Empty)
+			.Replace("Tower - ", "")
+			.Replace("Building - ", "")
+			.Replace(" ", "");
+		string objName = uiObj != null ? uiObj.name.Replace(" ", "") : string.Empty;
+		string combined = (un + "|" + title + "|" + objName).ToLowerInvariant();
+
+		// Cloned Row 2 building UI buttons may inherit myTowerType = TowerType.Siphon or default Crossbow,
+		// so match specific building names before ManaSiphon / tt == TowerType.Siphon.
+		if (!isTower)
+		{
+			if (combined.Contains("bank")) return "ManaBank";
+			if (combined.Contains("haunted") || combined.Contains("house")) return "HauntedHouse";
+			if (combined.Contains("mine")) return "Mine";
+			if (combined.Contains("university")) return "University";
+			if (combined.Contains("siphon") || tt == TowerType.Siphon) return "ManaSiphon";
+			return !string.IsNullOrEmpty(title) ? title : (!string.IsNullOrEmpty(un) ? un : objName);
+		}
+
 		if (tt.HasValue)
 		{
 			switch (tt.Value)
@@ -178,23 +451,9 @@ internal static class HotbarSorter
 				case TowerType.Obelisk: return "Obelisk";
 				case TowerType.ParticleCannon: return "ParticleCannon";
 				case TowerType.Monument: return "Monument";
-				case TowerType.Siphon: return "ManaSiphon";
 			}
 		}
 
-		string un = (UnlockNameRef(card) ?? string.Empty).Replace(" ", "");
-		string title = (card.title ?? string.Empty)
-			.Replace("Tower - ", "")
-			.Replace("Building - ", "")
-			.Replace(" ", "");
-		string objName = uiObj != null ? uiObj.name.Replace(" ", "") : string.Empty;
-
-		string combined = (un + "|" + title + "|" + objName).ToLowerInvariant();
-		if (combined.Contains("siphon")) return "ManaSiphon";
-		if (combined.Contains("bank")) return "ManaBank";
-		if (combined.Contains("haunted") || combined.Contains("house")) return "HauntedHouse";
-		if (combined.Contains("mine")) return "Mine";
-		if (combined.Contains("university")) return "University";
 		if (combined.Contains("mortar") || combined.Contains("morter")) return "Mortar";
 		if (combined.Contains("ballista") || combined.Contains("balista")) return "Ballista";
 
@@ -280,7 +539,7 @@ internal static class HotbarSorter
 		return result;
 	}
 
-	internal static bool IsItemUnlocked(HotbarItemInfo info)
+	internal static bool IsItemUnlockedRaw(HotbarItemInfo info)
 	{
 		if (info == null || info.UIObject == null || TowerUnlockManager.instance == null)
 		{
@@ -289,40 +548,212 @@ internal static class HotbarSorter
 		List<GameObject> list = info.IsTower
 			? UnlockedTowersRef(TowerUnlockManager.instance)
 			: UnlockedBuildingsRef(TowerUnlockManager.instance);
-		return list != null && list.Contains(info.UIObject) && info.UIObject.activeSelf;
+		return list != null && list.Contains(info.UIObject);
+	}
+
+	internal static List<HotbarItemInfo> GetCurrentlyDisplayedRowItems(bool isTower)
+	{
+		EnsureInitialized();
+		List<HotbarItemInfo> allOrdered = GetOrderedItems(isTower);
+		if (HotbarEditBarUI.IsOpen && HotbarEditBarUI.PreviewAllSlots)
+		{
+			return allOrdered;
+		}
+
+		List<HotbarItemInfo> owned = new List<HotbarItemInfo>(allOrdered.Count);
+		foreach (HotbarItemInfo item in allOrdered)
+		{
+			if (IsItemUnlockedRaw(item))
+			{
+				owned.Add(item);
+			}
+		}
+		return owned;
+	}
+
+	internal static int GetVisibleIndex(HotbarItemInfo item, out int total)
+	{
+		List<HotbarItemInfo> vis = GetCurrentlyDisplayedRowItems(item.IsTower);
+		total = vis.Count;
+		int idx = vis.IndexOf(item);
+		return idx >= 0 ? idx : 0;
+	}
+
+	internal static float GetRowY(bool isTower)
+	{
+		if (!isTower) return 0f;
+		if (HotbarEditBarUI.IsOpen && HotbarEditBarUI.PreviewAllSlots) return 100f;
+		if (TowerUnlockManager.instance == null) return 0f;
+		List<GameObject> blds = UnlockedBuildingsRef(TowerUnlockManager.instance);
+		return (blds != null && blds.Count > 0) ? 100f : 0f;
+	}
+
+	internal static float GetRowStep(bool isTower, int count)
+	{
+		if (HotbarEditBarUI.IsOpen && HotbarEditBarUI.PreviewAllSlots && isTower && count > 12)
+		{
+			return 78f;
+		}
+		return count > 12 ? 92f : 100f;
+	}
+
+	internal static float GetSlotBaseScale(bool isTower, int count)
+	{
+		if (HotbarEditBarUI.IsOpen && HotbarEditBarUI.PreviewAllSlots && isTower && count > 12)
+		{
+			return 0.78f;
+		}
+		return 1f;
+	}
+
+	internal static void ApplyPreviewOrRestoreLayout(TowerUnlockManager mgr)
+	{
+		if (mgr == null) return;
+		EnsureInitialized();
+
+		if (HotbarEditBarUI.IsOpen && HotbarEditBarUI.PreviewAllSlots)
+		{
+			LayoutPreviewRow(GetOrderedItems(isTower: true), isTower: true, yPos: 100f);
+			LayoutPreviewRow(GetOrderedItems(isTower: false), isTower: false, yPos: 0f);
+			return;
+		}
+
+		// Ensure every slot's CanvasGroup alpha, scale & visibility strictly match real unlocked lists
+		HashSet<GameObject> ownedSet = new HashSet<GameObject>();
+		List<GameObject> unlockedT = UnlockedTowersRef(mgr);
+		List<GameObject> unlockedB = UnlockedBuildingsRef(mgr);
+		if (unlockedT != null) foreach (GameObject g in unlockedT) if (g != null) ownedSet.Add(g);
+		if (unlockedB != null) foreach (GameObject g in unlockedB) if (g != null) ownedSet.Add(g);
+
+		foreach (HotbarItemInfo item in ItemsById.Values)
+		{
+			if (item.UIObject == null) continue;
+			CanvasGroup cg = item.UIObject.GetComponent<CanvasGroup>();
+			if (cg != null) cg.alpha = 1f;
+			item.UIObject.transform.localScale = Vector3.one;
+			bool shouldBeActive = ownedSet.Contains(item.UIObject);
+			if (item.UIObject.activeSelf != shouldBeActive)
+			{
+				item.UIObject.SetActive(shouldBeActive);
+			}
+		}
+	}
+
+	private static void LayoutPreviewRow(List<HotbarItemInfo> items, bool isTower, float yPos)
+	{
+		if (items == null || items.Count == 0) return;
+		int count = items.Count;
+		float step = GetRowStep(isTower, count);
+		float s = GetSlotBaseScale(isTower, count);
+		for (int i = 0; i < count; i++)
+		{
+			HotbarItemInfo info = items[i];
+			if (info == null || info.UIObject == null) continue;
+			if (!info.UIObject.activeSelf) info.UIObject.SetActive(true);
+
+			bool owned = IsItemUnlockedRaw(info);
+			CanvasGroup cg = info.UIObject.GetComponent<CanvasGroup>();
+			if (cg == null) cg = info.UIObject.AddComponent<CanvasGroup>();
+			cg.alpha = owned ? 1.0f : 0.48f;
+
+			float x = i * step - count * step * 0.5f + step * 0.5f;
+			info.UIObject.transform.localScale = new Vector3(s, s, 1f);
+			info.UIObject.transform.localPosition = new Vector3(x, yPos, 0f);
+		}
+	}
+
+	internal static void ReorderSlotToVisibleIndex(HotbarItemInfo dragged, int targetVisibleIndex, List<HotbarItemInfo> visibleRowItems)
+	{
+		if (dragged == null || visibleRowItems == null || visibleRowItems.Count == 0)
+		{
+			ForceRefreshHotbar();
+			return;
+		}
+
+		List<HotbarItemInfo> fullOrder = GetOrderedItems(dragged.IsTower);
+		int clampedTarget = Mathf.Clamp(targetVisibleIndex, 0, visibleRowItems.Count - 1);
+
+		// Determine new sequence inside visibleRowItems
+		List<HotbarItemInfo> updatedVisible = new List<HotbarItemInfo>(visibleRowItems);
+		int curVisIdx = updatedVisible.IndexOf(dragged);
+		if (curVisIdx < 0)
+		{
+			ForceRefreshHotbar();
+			return;
+		}
+		updatedVisible.RemoveAt(curVisIdx);
+		updatedVisible.Insert(clampedTarget, dragged);
+
+		// Map updated visible sequence back into fullOrder's slots occupied by visibleRowItems
+		HashSet<HotbarItemInfo> visSet = new HashSet<HotbarItemInfo>(updatedVisible);
+		int visCursor = 0;
+		for (int i = 0; i < fullOrder.Count; i++)
+		{
+			if (visSet.Contains(fullOrder[i]))
+			{
+				fullOrder[i] = updatedVisible[visCursor++];
+			}
+		}
+
+		SaveOrderList(dragged.IsTower, fullOrder);
+		HotbarEditBarUI.SelectItem(dragged, clampedTarget + 1, updatedVisible.Count, isDragging: false);
+	}
+
+	internal static bool MoveItemToIndex(string id, int targetIndex, bool amongAllSlots)
+	{
+		EnsureInitialized();
+		if (!ItemsById.TryGetValue(id, out HotbarItemInfo info)) return false;
+
+		if (amongAllSlots)
+		{
+			List<HotbarItemInfo> all = GetOrderedItems(info.IsTower);
+			int clamped = Mathf.Clamp(targetIndex, 0, all.Count - 1);
+			int cur = all.FindIndex(x => string.Equals(x.Id, info.Id, StringComparison.OrdinalIgnoreCase));
+			if (cur < 0) return false;
+			HotbarItemInfo picked = all[cur];
+			all.RemoveAt(cur);
+			all.Insert(clamped, picked);
+			SaveOrderList(info.IsTower, all);
+			HotbarEditBarUI.SelectItem(picked, clamped + 1, all.Count);
+			return true;
+		}
+
+		List<HotbarItemInfo> visible = GetCurrentlyDisplayedRowItems(info.IsTower);
+		if (visible.Count == 0 || !visible.Contains(info)) return false;
+		ReorderSlotToVisibleIndex(info, targetIndex, visible);
+		return true;
 	}
 
 	internal static void MoveItemInOrder(string id, int delta)
 	{
 		EnsureInitialized();
-		if (!ItemsById.TryGetValue(id, out HotbarItemInfo info))
-		{
-			return;
-		}
+		if (!ItemsById.TryGetValue(id, out HotbarItemInfo info)) return;
 
-		List<HotbarItemInfo> ordered = GetOrderedItems(info.IsTower);
-		int idx = ordered.FindIndex(x => string.Equals(x.Id, info.Id, StringComparison.OrdinalIgnoreCase));
+		List<HotbarItemInfo> vis = GetCurrentlyDisplayedRowItems(info.IsTower);
+		int idx = vis.IndexOf(info);
 		if (idx < 0)
 		{
-			return;
-		}
-		int target = Mathf.Clamp(idx + delta, 0, ordered.Count - 1);
-		if (target == idx)
-		{
+			vis = GetOrderedItems(info.IsTower);
+			idx = vis.IndexOf(info);
+			if (idx < 0) return;
+			int targetAll = Mathf.Clamp(idx + delta, 0, vis.Count - 1);
+			MoveItemToIndex(id, targetAll, amongAllSlots: true);
 			return;
 		}
 
-		HotbarItemInfo item = ordered[idx];
-		ordered.RemoveAt(idx);
-		ordered.Insert(target, item);
+		int target = Mathf.Clamp(idx + delta, 0, vis.Count - 1);
+		ReorderSlotToVisibleIndex(info, target, vis);
+	}
 
+	private static void SaveOrderList(bool isTower, List<HotbarItemInfo> ordered)
+	{
 		List<string> ids = new List<string>(ordered.Count);
 		for (int i = 0; i < ordered.Count; i++)
 		{
 			ids.Add(ordered[i].Id);
 		}
 		string csv = string.Join(",", ids);
-		if (info.IsTower)
+		if (isTower)
 		{
 			Plugin.TowerHotbarOrder.Value = csv;
 		}
@@ -330,25 +761,70 @@ internal static class HotbarSorter
 		{
 			Plugin.BuildingHotbarOrder.Value = csv;
 		}
-
+		Plugin.Instance?.Config?.Save();
 		ForceRefreshHotbar();
-		HotbarSortOverlayUI.RefreshIfOpen();
+		HotbarEditBarUI.RefreshUI();
+	}
+
+	internal static ConfigEntry<string> GetPresetConfig(int slot)
+	{
+		return slot switch
+		{
+			1 => Plugin.HotbarLayout1,
+			2 => Plugin.HotbarLayout2,
+			3 => Plugin.HotbarLayout3,
+			_ => null
+		};
+	}
+
+	internal static void SaveLayoutPreset(int slot)
+	{
+		ConfigEntry<string> cfg = GetPresetConfig(slot);
+		if (cfg == null) return;
+		EnsureInitialized();
+		string tCsv = Plugin.TowerHotbarOrder.Value;
+		string bCsv = Plugin.BuildingHotbarOrder.Value;
+		cfg.Value = tCsv + "|" + bCsv;
+		Plugin.ActiveHotbarPreset.Value = Mathf.Clamp(slot, 1, 3);
+		Plugin.Instance?.Config?.Save();
+		HotbarEditBarUI.RefreshUI();
+	}
+
+	internal static bool LoadLayoutPreset(int slot)
+	{
+		ConfigEntry<string> cfg = GetPresetConfig(slot);
+		if (cfg == null || string.IsNullOrWhiteSpace(cfg.Value))
+		{
+			return false;
+		}
+		string[] parts = cfg.Value.Split('|');
+		if (parts.Length >= 1 && !string.IsNullOrWhiteSpace(parts[0]))
+		{
+			Plugin.TowerHotbarOrder.Value = parts[0].Trim();
+		}
+		if (parts.Length >= 2 && !string.IsNullOrWhiteSpace(parts[1]))
+		{
+			Plugin.BuildingHotbarOrder.Value = parts[1].Trim();
+		}
+		Plugin.ActiveHotbarPreset.Value = Mathf.Clamp(slot, 1, 3);
+		Plugin.Instance?.Config?.Save();
+		ForceRefreshHotbar();
+		HotbarEditBarUI.RefreshUI();
+		return true;
 	}
 
 	internal static void ResetDefaultOrder()
 	{
 		Plugin.TowerHotbarOrder.Value = DefaultTowerOrderCsv;
 		Plugin.BuildingHotbarOrder.Value = DefaultBuildingOrderCsv;
+		Plugin.Instance?.Config?.Save();
 		ForceRefreshHotbar();
-		HotbarSortOverlayUI.RefreshIfOpen();
+		HotbarEditBarUI.RefreshUI();
 	}
 
 	internal static void SortManagerLists(TowerUnlockManager mgr)
 	{
-		if (mgr == null)
-		{
-			return;
-		}
+		if (mgr == null) return;
 		EnsureInitialized();
 
 		Dictionary<string, int> towerRank = BuildRankMap(ParseOrderCsv(Plugin.TowerHotbarOrder.Value, DefaultTowerOrderCsv));
@@ -391,10 +867,7 @@ internal static class HotbarSorter
 
 	internal static void ForceRefreshHotbar()
 	{
-		if (TowerUnlockManager.instance == null)
-		{
-			return;
-		}
+		if (TowerUnlockManager.instance == null) return;
 		if (Plugin.AutoSortHotbar.Value)
 		{
 			SortManagerLists(TowerUnlockManager.instance);
@@ -403,39 +876,49 @@ internal static class HotbarSorter
 	}
 }
 
-internal static class HotbarSortOverlayUI
+internal static class HotbarEditBarUI
 {
 	private static readonly Color BgWindow = new Color(0.086f, 0.098f, 0.133f, 0.96f);
 	private static readonly Color BgHeader = new Color(0.118f, 0.133f, 0.180f, 1.0f);
-	private static readonly Color BgCard = new Color(0.135f, 0.155f, 0.210f, 0.96f);
 	private static readonly Color BgButton = new Color(0.180f, 0.205f, 0.275f, 1.0f);
 	private static readonly Color GoldAccent = new Color(0.851f, 0.702f, 0.424f, 1.0f);
+	private static readonly Color GoldSoft = new Color(0.320f, 0.265f, 0.165f, 1.0f);
 	private static readonly Color GreenOn = new Color(0.180f, 0.620f, 0.388f, 1.0f);
-	private static readonly Color RedDanger = new Color(0.680f, 0.240f, 0.240f, 1.0f);
 	private static readonly Color TextLight = new Color(0.945f, 0.945f, 0.960f, 1.0f);
-	private static readonly Color TextMuted = new Color(0.675f, 0.705f, 0.775f, 1.0f);
-	private static readonly Color BorderSubtle = new Color(0.28f, 0.31f, 0.40f, 0.85f);
+	private static readonly Color TextMuted = new Color(0.74f, 0.77f, 0.84f, 1.0f);
 
-	private static Font _uiFont;
+	private static Font _fontRegular;
+	private static Font _fontBold;
 	private static GameObject _canvasObj;
 	private static GameObject _pillObj;
 	private static RectTransform _pillRt;
-	private static GameObject _popupObj;
-	private static RectTransform _popupRt;
-	private static RectTransform _contentRt;
-	private static ScrollRect _scrollRect;
+	private static Image _pillBg;
+	private static Text _pillText;
+	private static GameObject _barObj;
+	private static RectTransform _barRt;
+	private static Text _statusText;
+	private static Text _previewBtnText;
+	private static Image _previewBtnImg;
 	private static Text _autoSortBtnText;
-	private static Image _autoSortBtnImage;
-	private static bool _isOpen;
+	private static Image _autoSortBtnImg;
+	private static readonly Image[] _presetImgs = new Image[3];
+	private static readonly Text[] _presetTexts = new Text[3];
+	private static Text _savePresetBtnText;
 
-	internal static bool IsOpen => _isOpen && _popupObj != null && _popupObj.activeInHierarchy;
+	private static bool _isOpen;
+	internal static bool PreviewAllSlots = true;
+	internal static HotbarItemInfo HoveredOrSelected;
+	private static string _toast;
+	private static float _toastUntil;
+
+	internal static bool IsOpen => _isOpen && _barObj != null && _barObj.activeInHierarchy;
 
 	internal static bool IsPointerOverOverlay
 	{
 		get
 		{
 			Vector2 mouse = Input.mousePosition;
-			if (IsOpen && _popupRt != null && RectTransformUtility.RectangleContainsScreenPoint(_popupRt, mouse, null))
+			if (IsOpen && _barRt != null && RectTransformUtility.RectangleContainsScreenPoint(_barRt, mouse, null))
 			{
 				return true;
 			}
@@ -450,6 +933,7 @@ internal static class HotbarSortOverlayUI
 
 	internal static void OnSceneChanged()
 	{
+		HoveredOrSelected = null;
 		SetOpen(false);
 	}
 
@@ -457,22 +941,103 @@ internal static class HotbarSortOverlayUI
 	{
 		EnsureCreated();
 		_isOpen = open && GameManager.instance != null;
-		if (_popupObj != null)
+		if (_barObj != null)
 		{
-			_popupObj.SetActive(_isOpen);
+			_barObj.SetActive(_isOpen);
 		}
-		if (_isOpen)
+		HotbarSorter.ForceRefreshHotbar();
+		RefreshUI();
+	}
+
+	internal static void SelectItem(HotbarItemInfo item, int pos, int total, bool isDragging = false)
+	{
+		HoveredOrSelected = item;
+		SetActiveItem(item, pos, total, isDragging);
+	}
+
+	internal static void SetActiveItem(HotbarItemInfo item, int pos, int total, bool isDragging)
+	{
+		if (_statusText == null || item == null) return;
+		string row = item.IsTower ? "Row 1" : "Row 2";
+		string nick = string.IsNullOrEmpty(item.Nickname) ? "" : $" ({item.Nickname})";
+		string prefix = isDragging ? "Dragging " : "Selected: ";
+		_statusText.color = isDragging ? GoldAccent : TextLight;
+		_statusText.text = $"{prefix}{item.DisplayName}{nick}  •  {row} Slot #{pos}/{total}";
+	}
+
+	internal static void RefreshStatusFromSelection()
+	{
+		if (_statusText == null) return;
+		if (_toastUntil > 0f && Time.unscaledTime < _toastUntil && !string.IsNullOrEmpty(_toast))
 		{
-			RebuildList();
+			_statusText.color = GoldAccent;
+			_statusText.text = _toast;
+			return;
+		}
+		if (HoveredOrSelected != null)
+		{
+			int idx = HotbarSorter.GetVisibleIndex(HoveredOrSelected, out int total);
+			SetActiveItem(HoveredOrSelected, idx + 1, total, isDragging: false);
+			return;
+		}
+		_statusText.color = TextMuted;
+		_statusText.text = "Drag any tower/building icon directly on the hotbar below!";
+	}
+
+	private static void ShowToast(string msg)
+	{
+		_toast = msg;
+		_toastUntil = Time.unscaledTime + 2.2f;
+		if (_statusText != null)
+		{
+			_statusText.color = GoldAccent;
+			_statusText.text = msg;
 		}
 	}
 
-	internal static void RefreshIfOpen()
+	internal static void RefreshUI()
 	{
-		if (IsOpen)
+		if (_pillText != null && _pillBg != null)
 		{
-			RebuildList();
+			_pillText.text = IsOpen ? "Done" : "Edit Bar";
+			_pillText.color = IsOpen ? TextLight : GoldAccent;
+			_pillBg.color = IsOpen ? GreenOn : BgHeader;
 		}
+		if (!IsOpen) return;
+
+		if (_previewBtnText != null && _previewBtnImg != null)
+		{
+			_previewBtnText.text = PreviewAllSlots ? "All 20: ON" : "All 20: OFF";
+			_previewBtnImg.color = PreviewAllSlots ? GreenOn : BgButton;
+		}
+		if (_autoSortBtnText != null && _autoSortBtnImg != null)
+		{
+			bool on = Plugin.AutoSortHotbar.Value;
+			_autoSortBtnText.text = on ? "Auto-Sort: ON" : "Auto-Sort: OFF";
+			_autoSortBtnImg.color = on ? GreenOn : BgButton;
+		}
+
+		int active = Mathf.Clamp(Plugin.ActiveHotbarPreset.Value, 1, 3);
+		for (int i = 0; i < 3; i++)
+		{
+			int slot = i + 1;
+			bool hasData = !string.IsNullOrWhiteSpace(HotbarSorter.GetPresetConfig(slot)?.Value);
+			bool isAct = slot == active;
+			if (_presetImgs[i] != null)
+			{
+				_presetImgs[i].color = isAct ? GoldSoft : BgButton;
+			}
+			if (_presetTexts[i] != null)
+			{
+				_presetTexts[i].color = isAct ? GoldAccent : (hasData ? TextLight : TextMuted);
+				_presetTexts[i].text = hasData ? $"Layout {slot}" : $"Layout {slot} (Empty)";
+			}
+		}
+		if (_savePresetBtnText != null)
+		{
+			_savePresetBtnText.text = $"Save -> L{active}";
+		}
+		RefreshStatusFromSelection();
 	}
 
 	internal static void Tick()
@@ -480,14 +1045,8 @@ internal static class HotbarSortOverlayUI
 		bool inRun = GameManager.instance != null && !GameManager.instance.gameOver && !Plugin.IsPauseUiHidden();
 		if (!inRun)
 		{
-			if (_pillObj != null && _pillObj.activeSelf)
-			{
-				_pillObj.SetActive(false);
-			}
-			if (IsOpen)
-			{
-				SetOpen(false);
-			}
+			if (_pillObj != null && _pillObj.activeSelf) _pillObj.SetActive(false);
+			if (IsOpen) SetOpen(false);
 			return;
 		}
 
@@ -498,15 +1057,18 @@ internal static class HotbarSortOverlayUI
 		{
 			_pillObj.SetActive(showPill);
 		}
+
+		if (IsOpen && _toastUntil > 0f && Time.unscaledTime >= _toastUntil)
+		{
+			_toastUntil = 0f;
+			RefreshStatusFromSelection();
+		}
 	}
 
 	private static void EnsureCreated()
 	{
-		if (_canvasObj != null)
-		{
-			return;
-		}
-		ResolveFont();
+		if (_canvasObj != null) return;
+		ResolveFonts();
 
 		_canvasObj = new GameObject("RogueTowerQoL_HotbarSortCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
 		UnityEngine.Object.DontDestroyOnLoad(_canvasObj);
@@ -514,16 +1076,17 @@ internal static class HotbarSortOverlayUI
 		Canvas canvas = _canvasObj.GetComponent<Canvas>();
 		canvas.renderMode = RenderMode.ScreenSpaceOverlay;
 		canvas.sortingOrder = 420;
+		canvas.pixelPerfect = true;
 
 		CanvasScaler scaler = _canvasObj.GetComponent<CanvasScaler>();
 		scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-		scaler.referenceResolution = new Vector2(1920f, 1080f);
+		scaler.referenceResolution = new Vector2(1280f, 720f);
 		scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
 		scaler.matchWidthOrHeight = 0.5f;
 
 		CreatePillButton();
-		CreatePopupWindow();
-		_popupObj.SetActive(false);
+		CreateEditBar();
+		_barObj.SetActive(false);
 		_pillObj.SetActive(false);
 	}
 
@@ -534,9 +1097,10 @@ internal static class HotbarSortOverlayUI
 		_pillRt.anchorMin = new Vector2(0.5f, 0f);
 		_pillRt.anchorMax = new Vector2(0.5f, 0f);
 		_pillRt.pivot = new Vector2(0.5f, 0f);
-		_pillRt.anchoredPosition = new Vector2(-530f, 18f);
-		_pillRt.sizeDelta = new Vector2(74f, 28f);
+		_pillRt.anchoredPosition = new Vector2(-450f, 14f);
+		_pillRt.sizeDelta = new Vector2(78f, 28f);
 
+		_pillBg = _pillObj.GetComponent<Image>();
 		Outline ol = _pillObj.AddComponent<Outline>();
 		ol.effectColor = GoldAccent;
 		ol.effectDistance = new Vector2(1f, -1f);
@@ -545,225 +1109,147 @@ internal static class HotbarSortOverlayUI
 		btn.navigation = new Navigation { mode = Navigation.Mode.None };
 		btn.onClick.AddListener(() => SetOpen(!_isOpen));
 
-		Text txt = CreateText(_pillObj.transform, "Sort Bar", 12, FontStyle.Bold, GoldAccent, TextAnchor.MiddleCenter);
-		StretchFill(txt.rectTransform);
+		_pillText = CreateText(_pillObj.transform, "Edit Bar", 13, FontStyle.Bold, GoldAccent, TextAnchor.MiddleCenter);
+		StretchFill(_pillText.rectTransform);
 	}
 
-	private static void CreatePopupWindow()
+	private static void CreateEditBar()
 	{
-		_popupObj = CreatePanel("HotbarSortWindow", _canvasObj.transform, BgWindow);
-		_popupRt = _popupObj.GetComponent<RectTransform>();
-		_popupRt.anchorMin = new Vector2(0.5f, 0.5f);
-		_popupRt.anchorMax = new Vector2(0.5f, 0.5f);
-		_popupRt.pivot = new Vector2(0.5f, 0.5f);
-		_popupRt.anchoredPosition = new Vector2(0f, 20f);
-		_popupRt.sizeDelta = new Vector2(580f, 510f);
+		_barObj = CreatePanel("HotbarEditToolbar", _canvasObj.transform, BgWindow);
+		_barRt = _barObj.GetComponent<RectTransform>();
+		_barRt.anchorMin = new Vector2(0.5f, 0f);
+		_barRt.anchorMax = new Vector2(0.5f, 0f);
+		_barRt.pivot = new Vector2(0.5f, 0f);
+		_barRt.anchoredPosition = new Vector2(0f, 224f);
+		_barRt.sizeDelta = new Vector2(760f, 88f);
 
-		Outline border = _popupObj.AddComponent<Outline>();
+		Outline border = _barObj.AddComponent<Outline>();
 		border.effectColor = GoldAccent;
 		border.effectDistance = new Vector2(2f, -2f);
 
-		GameObject header = CreatePanel("Header", _popupRt, BgHeader);
-		RectTransform hdrRt = header.GetComponent<RectTransform>();
-		hdrRt.anchorMin = new Vector2(0f, 1f);
-		hdrRt.anchorMax = new Vector2(1f, 1f);
-		hdrRt.pivot = new Vector2(0.5f, 1f);
-		hdrRt.anchoredPosition = Vector2.zero;
-		hdrRt.sizeDelta = new Vector2(0f, 42f);
-
-		Text title = CreateText(hdrRt, "Hotbar Slot Order (QoL)", 16, FontStyle.Bold, GoldAccent, TextAnchor.MiddleLeft);
-		title.rectTransform.anchorMin = Vector2.zero;
-		title.rectTransform.anchorMax = Vector2.one;
-		title.rectTransform.offsetMin = new Vector2(14f, 0f);
-		title.rectTransform.offsetMax = new Vector2(-240f, 0f);
-
-		Button autoBtn = CreateSimpleButton(hdrRt, "Auto: ON", BgButton, TextLight, 11, () =>
-		{
-			Plugin.AutoSortHotbar.Value = !Plugin.AutoSortHotbar.Value;
-			if (Plugin.AutoSortHotbar.Value)
-			{
-				HotbarSorter.ForceRefreshHotbar();
-			}
-			RebuildList();
-		});
-		RectTransform autoRt = autoBtn.GetComponent<RectTransform>();
-		autoRt.anchorMin = new Vector2(1f, 0.5f);
-		autoRt.anchorMax = new Vector2(1f, 0.5f);
-		autoRt.pivot = new Vector2(1f, 0.5f);
-		autoRt.anchoredPosition = new Vector2(-132f, 0f);
-		autoRt.sizeDelta = new Vector2(92f, 26f);
-		_autoSortBtnImage = autoBtn.GetComponent<Image>();
-		_autoSortBtnText = autoBtn.GetComponentInChildren<Text>();
-
-		Button resetBtn = CreateSimpleButton(hdrRt, "Reset", BgButton, GoldAccent, 11, () =>
-		{
-			HotbarSorter.ResetDefaultOrder();
-		});
-		RectTransform resetRt = resetBtn.GetComponent<RectTransform>();
-		resetRt.anchorMin = new Vector2(1f, 0.5f);
-		resetRt.anchorMax = new Vector2(1f, 0.5f);
-		resetRt.pivot = new Vector2(1f, 0.5f);
-		resetRt.anchoredPosition = new Vector2(-46f, 0f);
-		resetRt.sizeDelta = new Vector2(78f, 26f);
-
-		Button closeBtn = CreateSimpleButton(hdrRt, "X", RedDanger, TextLight, 13, () => SetOpen(false));
-		RectTransform cRt = closeBtn.GetComponent<RectTransform>();
-		cRt.anchorMin = new Vector2(1f, 0.5f);
-		cRt.anchorMax = new Vector2(1f, 0.5f);
-		cRt.pivot = new Vector2(1f, 0.5f);
-		cRt.anchoredPosition = new Vector2(-8f, 0f);
-		cRt.sizeDelta = new Vector2(30f, 26f);
-
-		// Scroll body
-		GameObject scrollObj = new GameObject("ScrollBody", typeof(RectTransform), typeof(Image), typeof(Mask), typeof(ScrollRect));
-		scrollObj.transform.SetParent(_popupRt, worldPositionStays: false);
-		RectTransform scrollRt = scrollObj.GetComponent<RectTransform>();
-		scrollRt.anchorMin = Vector2.zero;
-		scrollRt.anchorMax = Vector2.one;
-		scrollRt.offsetMin = new Vector2(10f, 10f);
-		scrollRt.offsetMax = new Vector2(-16f, -48f);
-
-		scrollObj.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.01f);
-		scrollObj.GetComponent<Mask>().showMaskGraphic = false;
-
-		GameObject contentObj = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
-		contentObj.transform.SetParent(scrollRt, worldPositionStays: false);
-		_contentRt = contentObj.GetComponent<RectTransform>();
-		_contentRt.anchorMin = new Vector2(0f, 1f);
-		_contentRt.anchorMax = new Vector2(1f, 1f);
-		_contentRt.pivot = new Vector2(0.5f, 1f);
-		_contentRt.anchoredPosition = Vector2.zero;
-		_contentRt.sizeDelta = Vector2.zero;
-
-		VerticalLayoutGroup vlg = contentObj.GetComponent<VerticalLayoutGroup>();
-		vlg.padding = new RectOffset(4, 6, 4, 10);
-		vlg.spacing = 5f;
+		VerticalLayoutGroup vlg = _barObj.AddComponent<VerticalLayoutGroup>();
+		vlg.padding = new RectOffset(10, 10, 8, 8);
+		vlg.spacing = 6f;
 		vlg.childControlWidth = true;
 		vlg.childControlHeight = true;
 		vlg.childForceExpandWidth = true;
-		vlg.childForceExpandHeight = false;
+		vlg.childForceExpandHeight = true;
 
-		contentObj.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+		// Row 1: Status + < Left / Right > + Preview All + Done
+		GameObject row1 = CreatePanel("Row1", _barObj.transform, BgHeader);
+		HorizontalLayoutGroup h1 = row1.AddComponent<HorizontalLayoutGroup>();
+		h1.padding = new RectOffset(8, 4, 2, 2);
+		h1.spacing = 6f;
+		h1.childControlWidth = true;
+		h1.childControlHeight = true;
+		h1.childForceExpandWidth = false;
 
-		GameObject sbObj = CreatePanel("Scrollbar", _popupRt, new Color(0.06f, 0.07f, 0.09f, 0.9f));
-		RectTransform sbRt = sbObj.GetComponent<RectTransform>();
-		sbRt.anchorMin = new Vector2(1f, 0f);
-		sbRt.anchorMax = new Vector2(1f, 1f);
-		sbRt.pivot = new Vector2(1f, 0.5f);
-		sbRt.offsetMin = new Vector2(-12f, 10f);
-		sbRt.offsetMax = new Vector2(-4f, -48f);
+		_statusText = CreateText(row1.transform, "Drag any tower/building icon directly on the hotbar below!", 13, FontStyle.Bold, TextMuted, TextAnchor.MiddleLeft);
+		_statusText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
 
-		GameObject handleObj = CreatePanel("Handle", sbRt, GoldAccent);
-		StretchFill(handleObj.GetComponent<RectTransform>());
-
-		Scrollbar sb = sbObj.AddComponent<Scrollbar>();
-		sb.direction = Scrollbar.Direction.BottomToTop;
-		sb.handleRect = handleObj.GetComponent<RectTransform>();
-		sb.targetGraphic = handleObj.GetComponent<Image>();
-
-		_scrollRect = scrollObj.GetComponent<ScrollRect>();
-		_scrollRect.viewport = scrollRt;
-		_scrollRect.content = _contentRt;
-		_scrollRect.horizontal = false;
-		_scrollRect.vertical = true;
-		_scrollRect.movementType = ScrollRect.MovementType.Clamped;
-		_scrollRect.scrollSensitivity = 36f;
-		_scrollRect.verticalScrollbar = sb;
-		_scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
-	}
-
-	private static void RebuildList()
-	{
-		if (_contentRt == null)
+		Button leftBtn = CreateSimpleButton(row1.transform, "< Left", BgButton, TextLight, 12, () =>
 		{
-			return;
-		}
-		if (_autoSortBtnText != null && _autoSortBtnImage != null)
+			if (HoveredOrSelected != null) HotbarSorter.MoveItemInOrder(HoveredOrSelected.Id, -1);
+			else ShowToast("Click or hover a hotbar icon first, then drag or nudge!");
+		});
+		leftBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = 62f;
+
+		Button rightBtn = CreateSimpleButton(row1.transform, "Right >", BgButton, TextLight, 12, () =>
 		{
-			bool on = Plugin.AutoSortHotbar.Value;
-			_autoSortBtnText.text = on ? "Auto: ON" : "Auto: OFF";
-			_autoSortBtnImage.color = on ? GreenOn : BgButton;
-		}
+			if (HoveredOrSelected != null) HotbarSorter.MoveItemInOrder(HoveredOrSelected.Id, +1);
+			else ShowToast("Click or hover a hotbar icon first, then drag or nudge!");
+		});
+		rightBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = 66f;
 
-		for (int i = _contentRt.childCount - 1; i >= 0; i--)
+		Button prevBtn = CreateSimpleButton(row1.transform, "All 20: ON", GreenOn, TextLight, 12, () =>
 		{
-			Transform child = _contentRt.GetChild(i);
-			child.gameObject.SetActive(false);
-			child.SetParent(null, worldPositionStays: false);
-			UnityEngine.Object.Destroy(child.gameObject);
-		}
+			PreviewAllSlots = !PreviewAllSlots;
+			HotbarSorter.ForceRefreshHotbar();
+			RefreshUI();
+		});
+		prevBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = 88f;
+		_previewBtnImg = prevBtn.GetComponent<Image>();
+		_previewBtnText = prevBtn.GetComponentInChildren<Text>();
 
-		AddSectionHeader("Row 1 — Towers (Left -> Right)");
-		List<HotbarItemInfo> towers = HotbarSorter.GetOrderedItems(isTower: true);
-		for (int i = 0; i < towers.Count; i++)
+		Button doneBtn = CreateSimpleButton(row1.transform, "Done", GreenOn, TextLight, 13, () => SetOpen(false));
+		doneBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = 64f;
+
+		// Row 2: Layout 1 / 2 / 3 + Save -> L# + Reset + Auto-Sort
+		GameObject row2 = CreatePanel("Row2", _barObj.transform, Color.clear);
+		HorizontalLayoutGroup h2 = row2.AddComponent<HorizontalLayoutGroup>();
+		h2.padding = new RectOffset(2, 2, 0, 0);
+		h2.spacing = 6f;
+		h2.childControlWidth = true;
+		h2.childControlHeight = true;
+		h2.childForceExpandWidth = false;
+
+		for (int i = 0; i < 3; i++)
 		{
-			AddRow(towers[i], i + 1, towers.Count);
-		}
-
-		AddSectionHeader("Row 2 — Buildings (Left -> Right)");
-		List<HotbarItemInfo> blds = HotbarSorter.GetOrderedItems(isTower: false);
-		for (int i = 0; i < blds.Count; i++)
-		{
-			AddRow(blds[i], i + 1, blds.Count);
-		}
-
-		Canvas.ForceUpdateCanvases();
-		LayoutRebuilder.ForceRebuildLayoutImmediate(_contentRt);
-	}
-
-	private static void AddSectionHeader(string title)
-	{
-		GameObject obj = CreatePanel("Header_" + title, _contentRt, Color.clear);
-		obj.AddComponent<LayoutElement>().preferredHeight = 24f;
-		Text txt = CreateText(obj.transform, title.ToUpperInvariant(), 11, FontStyle.Bold, GoldAccent, TextAnchor.LowerLeft);
-		StretchFill(txt.rectTransform, 4f, 2f, 4f, 2f);
-	}
-
-	private static void AddRow(HotbarItemInfo info, int pos, int total)
-	{
-		bool owned = HotbarSorter.IsItemUnlocked(info);
-		GameObject row = CreatePanel("Slot_" + info.Id, _contentRt, BgCard);
-		row.AddComponent<LayoutElement>().preferredHeight = 32f;
-		Outline ol = row.AddComponent<Outline>();
-		ol.effectColor = BorderSubtle;
-		ol.effectDistance = new Vector2(1f, -1f);
-
-		HorizontalLayoutGroup hlg = row.AddComponent<HorizontalLayoutGroup>();
-		hlg.padding = new RectOffset(10, 8, 3, 3);
-		hlg.spacing = 6f;
-		hlg.childControlWidth = true;
-		hlg.childControlHeight = true;
-		hlg.childForceExpandWidth = false;
-
-		string nick = string.IsNullOrEmpty(info.Nickname) ? "" : $" <color=#9FA8BC>({info.Nickname})</color>";
-		string tag = owned ? " <color=#47B875>[Unlocked]</color>" : "";
-		Text lbl = CreateText(row.transform, $"<color=#D9B36C>#{pos}</color>  <b>{info.DisplayName}</b>{nick}{tag}", 13, FontStyle.Normal, TextLight, TextAnchor.MiddleLeft);
-		lbl.supportRichText = true;
-		lbl.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
-
-		Button upBtn = CreateSimpleButton(row.transform, "< Left", BgButton, TextLight, 12, () => HotbarSorter.MoveItemInOrder(info.Id, -1));
-		upBtn.interactable = pos > 1;
-		upBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = 60f;
-
-		Button dnBtn = CreateSimpleButton(row.transform, "Right >", BgButton, TextLight, 12, () => HotbarSorter.MoveItemInOrder(info.Id, +1));
-		dnBtn.interactable = pos < total;
-		dnBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = 64f;
-	}
-
-	private static void ResolveFont()
-	{
-		if (_uiFont != null) return;
-		Font[] fonts = Resources.FindObjectsOfTypeAll<Font>();
-		foreach (Font f in fonts)
-		{
-			if (f != null && !string.IsNullOrEmpty(f.name) && f.name != "Arial")
+			int slot = i + 1;
+			Button pb = CreateSimpleButton(row2.transform, $"Layout {slot}", BgButton, TextLight, 12, () =>
 			{
-				_uiFont = f;
-				break;
-			}
+				Plugin.ActiveHotbarPreset.Value = slot;
+				if (HotbarSorter.LoadLayoutPreset(slot))
+				{
+					ShowToast($"Loaded Hotbar Layout {slot}");
+				}
+				else
+				{
+					Plugin.Instance?.Config?.Save();
+					RefreshUI();
+					ShowToast($"Selected Layout {slot} (empty — click Save -> L{slot})");
+				}
+			});
+			pb.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+			_presetImgs[i] = pb.GetComponent<Image>();
+			_presetTexts[i] = pb.GetComponentInChildren<Text>();
 		}
-		if (_uiFont == null && fonts.Length > 0) _uiFont = fonts[0];
-		if (_uiFont == null) _uiFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+		Button saveBtn = CreateSimpleButton(row2.transform, "Save -> L1", GreenOn, TextLight, 12, () =>
+		{
+			int s = Mathf.Clamp(Plugin.ActiveHotbarPreset.Value, 1, 3);
+			HotbarSorter.SaveLayoutPreset(s);
+			ShowToast($"Saved current hotbar order to Layout {s}");
+		});
+		saveBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = 96f;
+		_savePresetBtnText = saveBtn.GetComponentInChildren<Text>();
+
+		Button resetBtn = CreateSimpleButton(row2.transform, "Reset", BgButton, GoldAccent, 12, () =>
+		{
+			HotbarSorter.ResetDefaultOrder();
+			ShowToast("Reset hotbar to default order");
+		});
+		resetBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = 68f;
+
+		Button autoBtn = CreateSimpleButton(row2.transform, "Auto-Sort: ON", GreenOn, TextLight, 12, () =>
+		{
+			Plugin.SetAutoSortHotbar(!Plugin.AutoSortHotbar.Value);
+			ShowToast($"Auto-Sort Hotbar: {(Plugin.AutoSortHotbar.Value ? "ON" : "OFF")}");
+		});
+		autoBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = 110f;
+		_autoSortBtnImg = autoBtn.GetComponent<Image>();
+		_autoSortBtnText = autoBtn.GetComponentInChildren<Text>();
+	}
+
+	private static void ResolveFonts()
+	{
+		if (_fontRegular != null) return;
+		try
+		{
+			_fontRegular = Font.CreateDynamicFontFromOSFont(new[] { "Segoe UI", "Calibri", "Verdana", "Arial" }, 16);
+			_fontBold = Font.CreateDynamicFontFromOSFont(new[] { "Segoe UI Semibold", "Segoe UI Bold", "Calibri Bold", "Arial Bold" }, 16);
+		}
+		catch
+		{
+		}
+		if (_fontRegular == null)
+		{
+			_fontRegular = Resources.GetBuiltinResource<Font>("Arial.ttf");
+		}
+		if (_fontBold == null)
+		{
+			_fontBold = _fontRegular;
+		}
 	}
 
 	private static GameObject CreatePanel(string name, Transform parent, Color color)
@@ -798,10 +1284,11 @@ internal static class HotbarSortOverlayUI
 		GameObject obj = new GameObject("Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
 		obj.transform.SetParent(parent, worldPositionStays: false);
 		Text t = obj.GetComponent<Text>();
-		t.font = _uiFont;
+		bool useDedicatedBold = style == FontStyle.Bold && _fontBold != null && _fontBold != _fontRegular;
+		t.font = useDedicatedBold ? _fontBold : _fontRegular;
 		t.text = text;
 		t.fontSize = fontSize;
-		t.fontStyle = style;
+		t.fontStyle = useDedicatedBold ? FontStyle.Normal : style;
 		t.color = color;
 		t.alignment = align;
 		t.horizontalOverflow = HorizontalWrapMode.Wrap;

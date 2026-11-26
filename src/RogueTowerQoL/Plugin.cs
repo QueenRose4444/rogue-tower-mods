@@ -13,12 +13,12 @@ using UnityEngine.UI;
 
 [assembly: AssemblyCompany("RogueTowerQoL")]
 [assembly: AssemblyConfiguration("Release")]
-[assembly: AssemblyDescription("Clean-room MIT non-cheat QoL suite for Rogue Tower: hotbar slot sorting + Sort UI, tower hold & +10 snap upgrades, 90-deg camera rotation/top-down/X-ray occluded placement, Open Chests/Chop Trees HUD, early wave expand, range preview rings, MaterialPropertyBlock priority tinting/sync, +7%/lvl RPM scaling, and Spacebar pause/build.")]
-[assembly: AssemblyFileVersion("2.0.0.0")]
-[assembly: AssemblyInformationalVersion("2.0.0")]
+[assembly: AssemblyDescription("Clean-room MIT non-cheat QoL suite for Rogue Tower: direct hotbar drag-and-drop sorting + saveable layouts, tower hold & +10 snap upgrades, 90-deg camera rotation/top-down/X-ray occluded placement, Open Chests/Chop Trees HUD, early wave expand, range preview rings, MaterialPropertyBlock priority tinting/sync, +7%/lvl RPM scaling, and Spacebar pause/build.")]
+[assembly: AssemblyFileVersion("2.1.0.0")]
+[assembly: AssemblyInformationalVersion("2.1.0")]
 [assembly: AssemblyProduct("RogueTowerQoL")]
 [assembly: AssemblyTitle("RogueTowerQoL")]
-[assembly: AssemblyVersion("2.0.0.0")]
+[assembly: AssemblyVersion("2.1.0.0")]
 
 namespace RogueTowerQoL;
 
@@ -31,7 +31,7 @@ public class Plugin : BaseUnityPlugin
 {
 	public const string PluginGuid = "Rosie.RogueTowerQoL";
 	public const string PluginName = "RogueTowerQoL";
-	public const string PluginVersion = "2.0.0";
+	public const string PluginVersion = "2.1.0";
 
 	internal static Plugin Instance;
 	internal static ManualLogSource Log;
@@ -54,11 +54,16 @@ public class Plugin : BaseUnityPlugin
 	public static ConfigEntry<bool> AllowBuildWhilePaused;
 	public static ConfigEntry<bool> HideKeybindsOverlay;
 
-	// 5. Hotbar Sorting
+	// 5. Hotbar Sorting & Drag-and-Drop Presets
 	public static ConfigEntry<bool> AutoSortHotbar;
+	public static ConfigEntry<bool> EnableHotbarDragAndDrop;
 	public static ConfigEntry<bool> ShowHotbarSortButton;
+	public static ConfigEntry<int> ActiveHotbarPreset;
 	public static ConfigEntry<string> TowerHotbarOrder;
 	public static ConfigEntry<string> BuildingHotbarOrder;
+	public static ConfigEntry<string> HotbarLayout1;
+	public static ConfigEntry<string> HotbarLayout2;
+	public static ConfigEntry<string> HotbarLayout3;
 
 	// 6. Tower Fast Upgrades (+10 Snap & Hold)
 	public static ConfigEntry<bool> EnableTowerFastUpgrade;
@@ -103,17 +108,21 @@ public class Plugin : BaseUnityPlugin
 		if (AutoSortHotbar != null)
 		{
 			AutoSortHotbar.Value = value;
+			Instance?.Config?.Save();
 			if (value) HotbarSorter.ForceRefreshHotbar();
-			HotbarSortOverlayUI.RefreshIfOpen();
+			HotbarEditBarUI.RefreshUI();
 		}
 	}
 	public static string GetTowerHotbarOrderCsv() => TowerHotbarOrder != null ? TowerHotbarOrder.Value : HotbarSorter.DefaultTowerOrderCsv;
 	public static string GetBuildingHotbarOrderCsv() => BuildingHotbarOrder != null ? BuildingHotbarOrder.Value : HotbarSorter.DefaultBuildingOrderCsv;
 	public static void MoveHotbarItem(string id, int delta) => HotbarSorter.MoveItemInOrder(id, delta);
+	public static bool MoveHotbarItemToIndex(string id, int targetIndex, bool amongAllSlots) => HotbarSorter.MoveItemToIndex(id, targetIndex, amongAllSlots);
+	public static void SaveHotbarPreset(int slot) => HotbarSorter.SaveLayoutPreset(slot);
+	public static bool LoadHotbarPreset(int slot) => HotbarSorter.LoadLayoutPreset(slot);
 	public static void ResetHotbarOrder() => HotbarSorter.ResetDefaultOrder();
 	public static void ForceRefreshHotbar() => HotbarSorter.ForceRefreshHotbar();
-	public static void SetHotbarSortOpen(bool open) => HotbarSortOverlayUI.SetOpen(open);
-	public static bool IsHotbarSortOpen() => HotbarSortOverlayUI.IsOpen;
+	public static void SetHotbarSortOpen(bool open) => HotbarEditBarUI.SetOpen(open);
+	public static bool IsHotbarSortOpen() => HotbarEditBarUI.IsOpen;
 
 	public static void RotateCameraBy(float degrees) => CameraAndPlacementHelper.RotateBy(degrees);
 	public static void ToggleTopDown() => CameraAndPlacementHelper.ToggleTopDown();
@@ -153,9 +162,14 @@ public class Plugin : BaseUnityPlugin
 		HideKeybindsOverlay = Config.Bind("4. Speed & HUD", "HideKeybindsOverlay", true, "Hides the redundant KeybindsUI banner if standalone.");
 
 		AutoSortHotbar = Config.Bind("5. Hotbar Sorting", "AutoSortHotbar", true, "Automatically orders Row 1 (Towers) and Row 2 (Buildings) on the build hotbar according to your custom order.");
-		ShowHotbarSortButton = Config.Bind("5. Hotbar Sorting", "ShowHotbarSortButton", true, "Shows a small 'Sort Bar' button near the build hotbar to reorder tower and building slots in-game.");
+		EnableHotbarDragAndDrop = Config.Bind("5. Hotbar Sorting", "EnableHotbarDragAndDrop", true, "Allows dragging tower & building buttons directly on the hotbar at any time to rearrange their positions.");
+		ShowHotbarSortButton = Config.Bind("5. Hotbar Sorting", "ShowHotbarSortButton", true, "Shows an 'Edit Bar' button beside the build hotbar to preview all 20 slots, drag-reorder them, and save layout presets.");
+		ActiveHotbarPreset = Config.Bind("5. Hotbar Sorting", "ActiveHotbarPreset", 1, "Active hotbar layout slot (1..3).");
 		TowerHotbarOrder = Config.Bind("5. Hotbar Sorting", "TowerHotbarOrder", HotbarSorter.DefaultTowerOrderCsv, "Comma-separated custom order for Row 1 Towers on the build hotbar.");
 		BuildingHotbarOrder = Config.Bind("5. Hotbar Sorting", "BuildingHotbarOrder", HotbarSorter.DefaultBuildingOrderCsv, "Comma-separated custom order for Row 2 Buildings on the build hotbar.");
+		HotbarLayout1 = Config.Bind("5. Hotbar Sorting", "HotbarLayout1", HotbarSorter.DefaultTowerOrderCsv + "|" + HotbarSorter.DefaultBuildingOrderCsv, "Saved Hotbar Order Layout 1 (Towers|Buildings).");
+		HotbarLayout2 = Config.Bind("5. Hotbar Sorting", "HotbarLayout2", "", "Saved Hotbar Order Layout 2 (Towers|Buildings).");
+		HotbarLayout3 = Config.Bind("5. Hotbar Sorting", "HotbarLayout3", "", "Saved Hotbar Order Layout 3 (Towers|Buildings).");
 
 		EnableTowerFastUpgrade = Config.Bind("6. Tower Fast Upgrades", "EnableTowerFastUpgrade", true, "Enables holding Health/Armor/Shield buttons or 1-2-3 keys to rapidly buy levels and adds a +10 Snap panel.");
 		HoldInitialDelay = Config.Bind("6. Tower Fast Upgrades", "HoldInitialDelay", 0.26f, "Seconds before holding an upgrade button starts auto-repeating.");
@@ -205,7 +219,7 @@ public class Plugin : BaseUnityPlugin
 	private void OnActiveSceneChanged(Scene oldScene, Scene newScene)
 	{
 		HotbarSorter.OnSceneChanged();
-		HotbarSortOverlayUI.OnSceneChanged();
+		HotbarEditBarUI.OnSceneChanged();
 		CameraAndPlacementHelper.OnSceneChanged();
 		QuickHudManager.OnSceneChanged();
 	}
@@ -292,7 +306,7 @@ public class Plugin : BaseUnityPlugin
 
 		QuickHudManager.Tick();
 		CameraAndPlacementHelper.Tick();
-		HotbarSortOverlayUI.Tick();
+		HotbarEditBarUI.Tick();
 
 		if (!ShouldRunSpeed()) return;
 
@@ -601,7 +615,7 @@ internal static class QoLPatches
 	[HarmonyPrefix]
 	private static bool CameraController_UpdateMovement_Prefix()
 	{
-		if (HotbarSortOverlayUI.IsPointerOverOverlay) return false;
+		if (HotbarEditBarUI.IsPointerOverOverlay || HotbarSorter.IsDraggingSlot) return false;
 		if (!Plugin.ShouldRunQoL()) return true;
 		return !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl);
 	}

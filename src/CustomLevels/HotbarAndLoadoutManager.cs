@@ -77,6 +77,8 @@ internal static class HotbarAndLoadoutManager
 
 	private static readonly AccessTools.FieldRef<CardManager, List<UpgradeCard>> AvailableCardsRef =
 		AccessTools.FieldRefAccess<CardManager, List<UpgradeCard>>("availableCards");
+	private static readonly AccessTools.FieldRef<CardManager, List<UpgradeCard>> StartCardsCheckRef =
+		AccessTools.FieldRefAccess<CardManager, List<UpgradeCard>>("startCardsCheck");
 
 	private static readonly Dictionary<string, HotbarItemInfo> ItemsById = new Dictionary<string, HotbarItemInfo>(StringComparer.OrdinalIgnoreCase);
 	private static readonly Dictionary<GameObject, HotbarItemInfo> ItemsByUI = new Dictionary<GameObject, HotbarItemInfo>();
@@ -140,41 +142,86 @@ internal static class HotbarAndLoadoutManager
 			}
 		}
 
-		TowerUnlockCard[] cards = Resources.FindObjectsOfTypeAll<TowerUnlockCard>();
-		foreach (TowerUnlockCard card in cards)
+		HashSet<UpgradeCard> visited = new HashSet<UpgradeCard>();
+		Queue<UpgradeCard> bfs = new Queue<UpgradeCard>();
+		List<TowerUnlockCard> sceneUnlockCards = new List<TowerUnlockCard>();
+		List<TowerUnlockCard> fallbackUnlockCards = new List<TowerUnlockCard>();
+
+		void EnqueueCard(UpgradeCard c)
 		{
-			if (card == null || !card.gameObject.scene.IsValid())
+			if (c != null && visited.Add(c))
 			{
-				continue;
+				bfs.Enqueue(c);
 			}
-			GameObject uiObj = CardUIObjectRef(card);
-			if (uiObj == null || ItemsByUI.ContainsKey(uiObj))
-			{
-				continue;
-			}
-
-			bool isTower = CardIsTowerRef(card);
-			BuildButtonUI bbu = uiObj.GetComponentInChildren<BuildButtonUI>(includeInactive: true);
-			TowerType? tt = null;
-			if (bbu != null)
-			{
-				tt = AccessTools.FieldRefAccess<BuildButtonUI, TowerType>("myTowerType")(bbu);
-			}
-
-			string id = ResolveCanonicalId(card, uiObj, isTower, tt);
-			(string disp, string nick) = GetFriendlyNames(id, card.title);
-
-			RegisterItem(new HotbarItemInfo
-			{
-				Id = id,
-				DisplayName = disp,
-				Nickname = nick,
-				IsTower = isTower,
-				TowerType = tt,
-				UIObject = uiObj,
-				UnlockCard = card
-			});
 		}
+
+		foreach (TowerUnlockCard tc in Resources.FindObjectsOfTypeAll<TowerUnlockCard>())
+		{
+			EnqueueCard(tc);
+		}
+		if (CardManager.instance != null)
+		{
+			List<UpgradeCard> startCards = StartCardsCheckRef(CardManager.instance);
+			if (startCards != null) foreach (UpgradeCard c in startCards) EnqueueCard(c);
+			List<UpgradeCard> availCards = AvailableCardsRef(CardManager.instance);
+			if (availCards != null) foreach (UpgradeCard c in availCards) EnqueueCard(c);
+		}
+		foreach (UpgradeCard c in Resources.FindObjectsOfTypeAll<UpgradeCard>())
+		{
+			if (c != null && c.gameObject.scene.IsValid()) EnqueueCard(c);
+		}
+
+		while (bfs.Count > 0)
+		{
+			UpgradeCard cur = bfs.Dequeue();
+			if (cur is TowerUnlockCard tuc)
+			{
+				if (tuc.gameObject.scene.IsValid()) sceneUnlockCards.Add(tuc);
+				else fallbackUnlockCards.Add(tuc);
+			}
+			if (cur.unlocks != null)
+			{
+				foreach (UpgradeCard child in cur.unlocks) EnqueueCard(child);
+			}
+		}
+
+		void ProcessUnlockCards(List<TowerUnlockCard> cardsList)
+		{
+			foreach (TowerUnlockCard card in cardsList)
+			{
+				if (card == null) continue;
+				GameObject uiObj = CardUIObjectRef(card);
+				if (uiObj == null || !uiObj.scene.IsValid() || ItemsByUI.ContainsKey(uiObj))
+				{
+					continue;
+				}
+
+				bool isTower = CardIsTowerRef(card);
+				BuildButtonUI bbu = uiObj.GetComponentInChildren<BuildButtonUI>(includeInactive: true);
+				TowerType? tt = null;
+				if (bbu != null)
+				{
+					tt = AccessTools.FieldRefAccess<BuildButtonUI, TowerType>("myTowerType")(bbu);
+				}
+
+				string id = ResolveCanonicalId(card, uiObj, isTower, tt);
+				(string disp, string nick) = GetFriendlyNames(id, card.title);
+
+				RegisterItem(new HotbarItemInfo
+				{
+					Id = id,
+					DisplayName = disp,
+					Nickname = nick,
+					IsTower = isTower,
+					TowerType = tt,
+					UIObject = uiObj,
+					UnlockCard = card
+				});
+			}
+		}
+
+		ProcessUnlockCards(sceneUnlockCards);
+		ProcessUnlockCards(fallbackUnlockCards);
 	}
 
 	private static void RegisterItem(HotbarItemInfo info)
@@ -189,6 +236,24 @@ internal static class HotbarAndLoadoutManager
 
 	private static string ResolveCanonicalId(TowerUnlockCard card, GameObject uiObj, bool isTower, TowerType? tt)
 	{
+		string un = (UnlockNameRef(card) ?? string.Empty).Replace(" ", "");
+		string title = (card.title ?? string.Empty)
+			.Replace("Tower - ", "")
+			.Replace("Building - ", "")
+			.Replace(" ", "");
+		string objName = uiObj != null ? uiObj.name.Replace(" ", "") : string.Empty;
+		string combined = (un + "|" + title + "|" + objName).ToLowerInvariant();
+
+		if (!isTower)
+		{
+			if (combined.Contains("bank")) return "ManaBank";
+			if (combined.Contains("haunted") || combined.Contains("house")) return "HauntedHouse";
+			if (combined.Contains("mine")) return "Mine";
+			if (combined.Contains("university")) return "University";
+			if (combined.Contains("siphon") || tt == TowerType.Siphon) return "ManaSiphon";
+			return !string.IsNullOrEmpty(title) ? title : (!string.IsNullOrEmpty(un) ? un : objName);
+		}
+
 		if (tt.HasValue)
 		{
 			switch (tt.Value)
@@ -208,23 +273,9 @@ internal static class HotbarAndLoadoutManager
 				case TowerType.Obelisk: return "Obelisk";
 				case TowerType.ParticleCannon: return "ParticleCannon";
 				case TowerType.Monument: return "Monument";
-				case TowerType.Siphon: return "ManaSiphon";
 			}
 		}
 
-		string un = (UnlockNameRef(card) ?? string.Empty).Replace(" ", "");
-		string title = (card.title ?? string.Empty)
-			.Replace("Tower - ", "")
-			.Replace("Building - ", "")
-			.Replace(" ", "");
-		string objName = uiObj != null ? uiObj.name.Replace(" ", "") : string.Empty;
-
-		string combined = (un + "|" + title + "|" + objName).ToLowerInvariant();
-		if (combined.Contains("siphon")) return "ManaSiphon";
-		if (combined.Contains("bank")) return "ManaBank";
-		if (combined.Contains("haunted") || combined.Contains("house")) return "HauntedHouse";
-		if (combined.Contains("mine")) return "Mine";
-		if (combined.Contains("university")) return "University";
 		if (combined.Contains("mortar") || combined.Contains("morter")) return "Mortar";
 		if (combined.Contains("ballista") || combined.Contains("balista")) return "Ballista";
 

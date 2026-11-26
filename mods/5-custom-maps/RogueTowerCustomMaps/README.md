@@ -1,4 +1,4 @@
-# RogueTowerCustomMaps (v1.3.0)
+# RogueTowerCustomMaps (v1.3.1)
 
 Clean-room custom map generator featuring Play Menu preset cycling, a built-in In-Game Custom Map Sequence Builder UI (click +S/+L/+R/+SLR/+Portal chips without editing configs!), non-destructive TileManager pool restoration, and Mod Menu sync. Inspired by acr-Rogue_Tower_Custom_Maps; 100% AI-generated (Google Gemini & Anthropic Claude), designed by Rose.
 

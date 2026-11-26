@@ -1,4 +1,4 @@
-# RogueTowerModMenu (v2.5.0)
+# RogueTowerModMenu (v2.5.1)
 
 Cheat & sandbox Mod Menu (`), saved tower loadouts & unlock grants, card/tree spawners, live companion module controls, Round 40/45 Level-40 FPS benchmark scenes, per-frame stall profiler, and loopback test harness. 100% AI-generated (Google Gemini & Anthropic Claude), designed by Rose.
 
@@ -16,8 +16,8 @@ Cheat & sandbox Mod Menu (`), saved tower loadouts & unlock grants, card/tree sp
 - Header buttons: `<90` / `90>` / `Top` (via `RogueTowerQoL`), `Theme` (`Vanilla / Dark / Light` via `RogueTowerThemes`), `Pause / Resume` (`SpeedControls`).
 
 ## What We Changed / Improved Over Upstream Inspiration
-- Separated all **non-cheat QoL features** (Hotbar Sorting, Tower Hold / `+10` Fast Upgrades, `90 deg` Camera Rotation / Top-Down / X-Ray Placement, Open Chests / Chop Trees HUD, Early Wave Expand) cleanly into **`RogueTowerQoL` v2.0.0** so players who want pure vanilla balance with great UX do not need cheats installed.
-- Added per-frame worst-spike profiler (`DeepLagProfiler`), Level-40 (`+13/+13/+13`) uniform stress presets, and zero-CLI-arg Steam-popup-free headless test tooling (`127.0.0.1:18437`).
+- Separated all **non-cheat QoL features** (Hotbar Drag-and-Drop Sorting, Tower Hold / `+10` Fast Upgrades, `90 deg` Camera Rotation / Top-Down / X-Ray Placement, Open Chests / Chop Trees HUD, Early Wave Expand) cleanly into **`RogueTowerQoL` v2.1.0** so players who want pure vanilla balance with great UX do not need cheats installed.
+- Added per-frame worst-spike profiler (`DeepLagProfiler`), Level-40 (`+13/+13/+13`) uniform stress presets, pixel-perfect TrueType `1280x720` crisp UI rendering, and zero-CLI-arg Steam-popup-free headless test tooling (`127.0.0.1:18437`).
 
 ## Source Code
 - Visual C# project: [`src/CustomLevels/`](../../../src/CustomLevels/)
