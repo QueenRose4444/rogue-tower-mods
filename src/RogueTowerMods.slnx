@@ -1,5 +1,6 @@
 <Solution>
-  <Project Path="CustomLevels\CustomLevels.csproj" />
+  <Project Path="ModMenu\ModMenu.csproj" />
+  <Project Path="Cheats\Cheats.csproj" />
   <Project Path="QuickTree\QuickTree.csproj" />
   <Project Path="LagFix\LagFix.csproj" />
   <Project Path="CustomMaps\CustomMaps.csproj" />

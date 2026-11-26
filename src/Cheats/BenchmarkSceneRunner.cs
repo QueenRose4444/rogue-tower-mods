@@ -9,7 +9,7 @@ using HarmonyLib;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace RogueTowerCustomLevels;
+namespace RogueTowerCheats;
 
 internal sealed class BenchmarkPreset
 {
@@ -107,27 +107,18 @@ internal static class BenchmarkSceneRunner
 
 	internal static BenchmarkPreset FindPreset(string presetId)
 	{
-		if (string.IsNullOrWhiteSpace(presetId))
-		{
-			return Presets[0];
-		}
+		if (string.IsNullOrWhiteSpace(presetId)) return Presets[0];
 		string key = presetId.Trim();
 		foreach (BenchmarkPreset p in Presets)
 		{
-			if (string.Equals(p.Id, key, StringComparison.OrdinalIgnoreCase))
-			{
-				return p;
-			}
+			if (string.Equals(p.Id, key, StringComparison.OrdinalIgnoreCase)) return p;
 		}
 		return null;
 	}
 
 	internal static int GetActivePortalCount()
 	{
-		if (SpawnManager.instance == null)
-		{
-			return 0;
-		}
+		if (SpawnManager.instance == null) return 0;
 		HashSet<Waypoint> pts = SpawnPointsRef(SpawnManager.instance);
 		return pts != null ? pts.Count : 0;
 	}
@@ -174,14 +165,11 @@ internal static class BenchmarkSceneRunner
 
 	internal static void TickFrameSample()
 	{
-		if (!IsBusy)
-		{
-			return;
-		}
+		if (!IsBusy) return;
 
 		if (_lockedTimeScale > 0f && (Phase == "warmup" || Phase == "sampling") && Mathf.Abs(Time.timeScale - _lockedTimeScale) > 0.05f)
 		{
-			ModuleBridge.SetSpeed(_lockedTimeScale);
+			CheatBridge.SetSpeed(_lockedTimeScale);
 		}
 
 		if (_autoChainActive && (Phase == "warmup" || Phase == "sampling") && SpawnManager.instance != null)
@@ -194,26 +182,20 @@ internal static class BenchmarkSceneRunner
 			}
 		}
 
-		if (Phase != "sampling")
-		{
-			return;
-		}
+		if (Phase != "sampling") return;
 
 		float dt = Time.unscaledDeltaTime;
 		if (dt > 0.0001f)
 		{
 			SampleFrameTimes.Add(dt);
-			DeepLagProfiler.RecordRenderedFrame(dt);
+			CheatBridge.RecordProfilerFrame(dt);
 		}
 		if (SpawnManager.instance != null && SpawnManager.instance.currentEnemies != null)
 		{
 			int enemies = SpawnManager.instance.currentEnemies.Count;
 			_enemySamples++;
 			_enemySum += enemies;
-			if (enemies > _peakEnemies)
-			{
-				_peakEnemies = enemies;
-			}
+			if (enemies > _peakEnemies) _peakEnemies = enemies;
 		}
 	}
 
@@ -238,7 +220,6 @@ internal static class BenchmarkSceneRunner
 			Plugin.Log.LogInfo($"[Benchmark] Loading GameScene (mode={preset.GameMode}, split={preset.ForceSplitMode})...");
 			GameManager previousGm = GameManager.instance;
 			SceneManager.LoadScene("GameScene");
-			// SceneManager.LoadScene swaps the scene at end-of-frame; yield once before polling so reloading GameScene from GameScene does not see the previous dying GameManager!
 			yield return null;
 
 			int waitFrames = 0;
@@ -279,16 +260,12 @@ internal static class BenchmarkSceneRunner
 			Plugin.InfiniteMoney.Value = true;
 			Plugin.InfiniteRange.Value = preset.EnableInfRange;
 
-			// Phase 1: Expand map up to TargetWave - 1 (extra tiles in Omega so 310 spots easily fit on grass!)
 			Phase = "building_map";
 			int steps = Mathf.Max(0, preset.TargetWave - 1);
 			for (int step = 0; step < steps; step++)
 			{
 				TileSpawnLocation[] locs = UnityEngine.Object.FindObjectsOfType<TileSpawnLocation>();
-				if (locs == null || locs.Length == 0)
-				{
-					break;
-				}
+				if (locs == null || locs.Length == 0) break;
 
 				TileSpawnLocation chosen = locs[0];
 				int bestDist = Mathf.Abs(chosen.posX - 50) + Mathf.Abs(chosen.posY - 50);
@@ -297,20 +274,11 @@ internal static class BenchmarkSceneRunner
 					TileSpawnLocation cand = locs[i];
 					if (cand == null) continue;
 					int d = Mathf.Abs(cand.posX - 50) + Mathf.Abs(cand.posY - 50);
-					if (d < bestDist)
-					{
-						bestDist = d;
-						chosen = cand;
-					}
+					if (d < bestDist) { bestDist = d; chosen = cand; }
 				}
-
-				if (chosen == null)
-				{
-					break;
-				}
+				if (chosen == null) break;
 
 				SpawnManager.instance.level = step;
-
 				if (preset.ForceSplitMode)
 				{
 					TileManager.instance.splitMode = true;
@@ -320,10 +288,7 @@ internal static class BenchmarkSceneRunner
 					int curLanes = Mathf.Max(SpawnManager.instance.tileSpawnUis.Count, locs.Length);
 					bool needMoreSplits = curLanes < preset.TargetPortals;
 					TileManager.instance.splitMode = needMoreSplits;
-					if (needMoreSplits && step < preset.GameMode * 3)
-					{
-						SpawnManager.instance.level = preset.GameMode * 3;
-					}
+					if (needMoreSplits && step < preset.GameMode * 3) SpawnManager.instance.level = preset.GameMode * 3;
 				}
 				else
 				{
@@ -340,7 +305,6 @@ internal static class BenchmarkSceneRunner
 			Physics.SyncTransforms();
 			yield return new WaitForFixedUpdate();
 
-			// Phase 2: Unlock towers/buildings + ALL non-monster card trees
 			Phase = "placing_towers";
 			HotbarAndLoadoutManager.EnsureInitialized();
 			CheatActions.GiveAllUnlocks(towers: true, buildings: true);
@@ -351,21 +315,20 @@ internal static class BenchmarkSceneRunner
 				? PlaceUniformAllTowersAndBuildings(preset.UniformPerTowerType, perBuildingType: 2)
 				: PlaceBenchmarkTowers(preset.TowerCount);
 
-			// Wait 1 frame so Start() finishes cleanly on every placed tower (including RadarTower.myPlane & Dropper)
 			yield return null;
 
 			UpgradeAllPlacedTowersToLevel(preset.TargetTowerLevel);
 			CheatActions.RefreshAllPlacedTowers();
 			yield return null;
 
-			// Phase 3: Launch TargetWave at preset speed
 			_wavesChained = 0;
 			_autoChainActive = preset.AutoChainWaves;
 			_lockedTimeScale = preset.TimeScale;
 			SpawnManager.instance.endless = preset.AutoChainWaves;
 			SpawnManager.instance.level = Mathf.Max(0, preset.TargetWave - 1);
-			ModuleBridge.SetSpeed(preset.TimeScale);
-			ModMenuUI.SetOpen(false);
+			CheatBridge.SetSpeed(preset.TimeScale);
+			CheatBridge.SetModMenuOpen(false);
+			CheatTabsUI.CloseStandalone();
 			SpawnManager.instance.StartNextWave();
 
 			int activePortals = GetActivePortalCount();
@@ -381,25 +344,20 @@ internal static class BenchmarkSceneRunner
 				yield break;
 			}
 
-			// Warmup
 			Phase = "warmup";
-			if (warmupSec > 0f)
-			{
-				yield return new WaitForSecondsRealtime(warmupSec);
-			}
+			if (warmupSec > 0f) yield return new WaitForSecondsRealtime(warmupSec);
 
-			// Sampling with DeepLagProfiler
 			SampleFrameTimes.Clear();
 			_enemySamples = 0;
 			_enemySum = 0;
 			_peakEnemies = 0;
 			_wavesChained = 0;
-			DeepLagProfiler.BeginSession();
+			CheatBridge.BeginProfilerSession();
 			Phase = "sampling";
 			yield return new WaitForSecondsRealtime(durationSec);
 			Phase = "finalizing";
 			_autoChainActive = false;
-			string profilerJson = DeepLagProfiler.EndSessionAndBuildJson();
+			string profilerJson = CheatBridge.EndProfilerSessionJson();
 
 			BuildAndSaveReport(preset, durationSec, warmupSec, placedCount, activePortals, closedRedPortals, openLanes, profilerJson, outDirOverride);
 			Plugin.Log.LogInfo($"[Benchmark] Completed '{preset.Id}': report={LastReportPath}");
@@ -409,12 +367,11 @@ internal static class BenchmarkSceneRunner
 		{
 			_autoChainActive = false;
 			_lockedTimeScale = -1f;
-			DeepLagProfiler.Active = false;
 			PlayerPrefs.SetInt("GameMode", prevGameMode);
 			PlayerPrefs.SetInt("SplitMode", prevSplitMode);
 			if (recordMetrics)
 			{
-				ModuleBridge.SetSpeed(1f);
+				CheatBridge.SetSpeed(1f);
 				Plugin.InfiniteRange.Value = prevInfRange;
 				Plugin.GodMode.Value = prevGodMode;
 				Plugin.InfiniteMana.Value = prevInfMana;
@@ -426,32 +383,19 @@ internal static class BenchmarkSceneRunner
 
 	private static int PlaceBenchmarkTowers(int targetCount)
 	{
-		if (targetCount <= 0 || BuildingManager.instance == null)
-		{
-			return 0;
-		}
-
+		if (targetCount <= 0 || BuildingManager.instance == null) return 0;
 		List<GameObject> prefabs = GatherPrefabs(isTower: true, skipEncampment: true);
-		if (prefabs.Count == 0)
-		{
-			return 0;
-		}
-
+		if (prefabs.Count == 0) return 0;
 		List<(int x, int z, float dist)> candidates = CollectWaypointRingCandidates();
 		return InstantiateOnCandidates(candidates, prefabs, targetCount, perPrefabCap: int.MaxValue);
 	}
 
 	private static int PlaceUniformAllTowersAndBuildings(int perTowerType, int perBuildingType)
 	{
-		if (BuildingManager.instance == null)
-		{
-			return 0;
-		}
-
+		if (BuildingManager.instance == null) return 0;
 		List<GameObject> towerPrefabs = GatherPrefabs(isTower: true, skipEncampment: false);
 		List<GameObject> buildingPrefabs = GatherPrefabs(isTower: false, skipEncampment: false);
 		List<(int x, int z, float dist)> candidates = CollectAllTileGrassCandidates();
-
 		List<Vector2> occupied = CollectExistingTowerPositions();
 		int placedTowers = InstantiateBalanced(candidates, towerPrefabs, perTowerType, occupied);
 		int placedBlds = InstantiateBalanced(candidates, buildingPrefabs, perBuildingType, occupied);
@@ -469,10 +413,7 @@ internal static class BenchmarkSceneRunner
 			BuildButtonUI bbu = info.UIObject.GetComponentInChildren<BuildButtonUI>(includeInactive: true);
 			if (bbu == null) continue;
 			GameObject prefab = BuildButtonTowerRef(bbu);
-			if (prefab != null)
-			{
-				prefabs.Add(prefab);
-			}
+			if (prefab != null) prefabs.Add(prefab);
 		}
 		return prefabs;
 	}
@@ -500,10 +441,7 @@ internal static class BenchmarkSceneRunner
 					int cx = wx + dx;
 					int cz = wz + dz;
 					long key = (((long)cx + 10000L) << 20) | ((long)cz + 10000L);
-					if (seenCoords.Add(key))
-					{
-						candidates.Add((cx, cz, Mathf.Sqrt(distSq)));
-					}
+					if (seenCoords.Add(key)) candidates.Add((cx, cz, Mathf.Sqrt(distSq)));
 				}
 			}
 		}
@@ -532,10 +470,7 @@ internal static class BenchmarkSceneRunner
 					int cx = tx + dx;
 					int cz = tz + dz;
 					long key = (((long)cx + 10000L) << 20) | ((long)cz + 10000L);
-					if (seenCoords.Add(key))
-					{
-						candidates.Add((cx, cz, Mathf.Sqrt(cx * cx + cz * cz)));
-					}
+					if (seenCoords.Add(key)) candidates.Add((cx, cz, Mathf.Sqrt(cx * cx + cz * cz)));
 				}
 			}
 		}
@@ -546,22 +481,15 @@ internal static class BenchmarkSceneRunner
 	private static List<Vector2> CollectExistingTowerPositions()
 	{
 		List<Vector2> occupied = new List<Vector2>(512);
-		Tower[] existingTowers = UnityEngine.Object.FindObjectsOfType<Tower>();
-		foreach (Tower t in existingTowers)
+		foreach (Tower t in UnityEngine.Object.FindObjectsOfType<Tower>())
 		{
-			if (t != null)
-			{
-				occupied.Add(new Vector2(t.transform.position.x, t.transform.position.z));
-			}
+			if (t != null) occupied.Add(new Vector2(t.transform.position.x, t.transform.position.z));
 		}
 		return occupied;
 	}
 
 	private static int InstantiateOnCandidates(List<(int x, int z, float dist)> candidates, List<GameObject> prefabs, int targetCount, int perPrefabCap)
-	{
-		List<Vector2> occupied = CollectExistingTowerPositions();
-		return InstantiateBalanced(candidates, prefabs, perPrefabCap, occupied, maxTotal: targetCount);
-	}
+		=> InstantiateBalanced(candidates, prefabs, perPrefabCap, CollectExistingTowerPositions(), maxTotal: targetCount);
 
 	private static int InstantiateBalanced(
 		List<(int x, int z, float dist)> candidates,
@@ -570,10 +498,7 @@ internal static class BenchmarkSceneRunner
 		List<Vector2> occupied,
 		int maxTotal = int.MaxValue)
 	{
-		if (prefabs.Count == 0 || candidates.Count == 0 || perPrefabCap <= 0)
-		{
-			return 0;
-		}
+		if (prefabs.Count == 0 || candidates.Count == 0 || perPrefabCap <= 0) return 0;
 
 		LayerMask buildableMask = BuildableMaskRef(BuildingManager.instance);
 		int grassLayer = LayerMask.NameToLayer("Grass");
@@ -585,51 +510,26 @@ internal static class BenchmarkSceneRunner
 		for (int i = 0; i < candidates.Count && placed < targetTotal; i++)
 		{
 			var cand = candidates[i];
-			Ray ray = new Ray(new Vector3(cand.x, 15f, cand.z), Vector3.down);
-			if (!Physics.Raycast(ray, out RaycastHit hit, 30f, buildableMask, QueryTriggerInteraction.Ignore))
-			{
-				continue;
-			}
-			if (hit.collider == null || hit.collider.gameObject.layer != grassLayer)
-			{
-				continue;
-			}
+			if (!Physics.Raycast(new Ray(new Vector3(cand.x, 15f, cand.z), Vector3.down), out RaycastHit hit, 30f, buildableMask, QueryTriggerInteraction.Ignore)) continue;
+			if (hit.collider == null || hit.collider.gameObject.layer != grassLayer) continue;
 
-			Vector3 spot = new Vector3(
-				Mathf.Round(hit.point.x),
-				Mathf.Round(3f * hit.point.y) / 3f,
-				Mathf.Round(hit.point.z));
-
-			if (Vector3.SqrMagnitude(hit.point - spot) >= 0.25f)
-			{
-				continue;
-			}
+			Vector3 spot = new Vector3(Mathf.Round(hit.point.x), Mathf.Round(3f * hit.point.y) / 3f, Mathf.Round(hit.point.z));
+			if (Vector3.SqrMagnitude(hit.point - spot) >= 0.25f) continue;
 
 			bool overlaps = false;
 			for (int j = 0; j < occupied.Count; j++)
 			{
 				float dx = occupied[j].x - spot.x;
 				float dz = occupied[j].y - spot.z;
-				if (dx * dx + dz * dz < 0.64f)
-				{
-					overlaps = true;
-					break;
-				}
+				if (dx * dx + dz * dz < 0.64f) { overlaps = true; break; }
 			}
-			if (overlaps)
-			{
-				continue;
-			}
+			if (overlaps) continue;
 
 			int chosenIdx = -1;
 			for (int k = 0; k < prefabs.Count; k++)
 			{
 				int pIdx = (rr + k) % prefabs.Count;
-				if (counts[pIdx] < perPrefabCap)
-				{
-					chosenIdx = pIdx;
-					break;
-				}
+				if (counts[pIdx] < perPrefabCap) { chosenIdx = pIdx; break; }
 			}
 			if (chosenIdx < 0) break;
 
@@ -644,12 +544,8 @@ internal static class BenchmarkSceneRunner
 
 	private static void UpgradeAllPlacedTowersToLevel(int targetLevel)
 	{
-		if (targetLevel <= 1)
-		{
-			return;
-		}
-		Tower[] towers = UnityEngine.Object.FindObjectsOfType<Tower>();
-		foreach (Tower t in towers)
+		if (targetLevel <= 1) return;
+		foreach (Tower t in UnityEngine.Object.FindObjectsOfType<Tower>())
 		{
 			if (t == null) continue;
 			int added = Mathf.Max(0, targetLevel - t.level);
@@ -680,10 +576,7 @@ internal static class BenchmarkSceneRunner
 		Array.Sort(sortedDt);
 
 		double totalTime = 0;
-		for (int i = 0; i < sortedDt.Length; i++)
-		{
-			totalTime += sortedDt[i];
-		}
+		for (int i = 0; i < sortedDt.Length; i++) totalTime += sortedDt[i];
 
 		double meanFrameMs = totalTime > 0 ? (totalTime / sortedDt.Length) * 1000.0 : 0.0;
 		double meanFps = totalTime > 0 ? sortedDt.Length / totalTime : 0.0;
@@ -701,10 +594,10 @@ internal static class BenchmarkSceneRunner
 		double minFps = maxDt > 0f ? 1.0 / maxDt : 0.0;
 
 		double meanEnemies = _enemySamples > 0 ? (double)_enemySum / _enemySamples : 0.0;
-		bool lagFixLoaded = Chainloader.PluginInfos != null && Chainloader.PluginInfos.ContainsKey(ModuleBridge.Keys.LagFix);
+		bool lagFixLoaded = Chainloader.PluginInfos != null && Chainloader.PluginInfos.ContainsKey(CheatBridge.Keys.LagFix);
 		double managedMemMb = GC.GetTotalMemory(false) / (1024.0 * 1024.0);
 		int totalTowers = UnityEngine.Object.FindObjectsOfType<Tower>().Length;
-		string themeName = ModuleBridge.GetThemeModeName();
+		string themeName = CheatBridge.GetThemeModeName();
 		bool showDmgNums = OptionsMenu.instance == null || OptionsMenu.instance.showDamageNumbers;
 		bool showExtraFx = OptionsMenu.instance == null || OptionsMenu.instance.extraProjectileEffects;
 
@@ -749,7 +642,7 @@ internal static class BenchmarkSceneRunner
 		LastReportJson = report;
 		try
 		{
-			string dir = Path.Combine(TestHarnessServer.GetOutputDir(outDirOverride), "benchmarks");
+			string dir = Path.Combine(CheatBridge.GetTestOutputDir(outDirOverride), "benchmarks");
 			Directory.CreateDirectory(dir);
 			string path = Path.Combine(dir, $"{preset.Id}_{DateTime.Now:yyyyMMdd_HHmmss}.json");
 			File.WriteAllText(path, report, Encoding.UTF8);
@@ -811,10 +704,6 @@ internal static class BenchmarkSceneRunner
 	private static string JsonStr(string s)
 	{
 		if (s == null) return "null";
-		return "\"" + s
-			.Replace("\\", "\\\\")
-			.Replace("\"", "\\\"")
-			.Replace("\r", "\\r")
-			.Replace("\n", "\\n") + "\"";
+		return "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n") + "\"";
 	}
 }

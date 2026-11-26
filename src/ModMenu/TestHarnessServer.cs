@@ -6,14 +6,15 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
 using System.Threading;
+using HarmonyLib;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-namespace RogueTowerCustomLevels;
+namespace RogueTowerModMenu;
 
 internal static class TestHarnessServer
 {
@@ -31,18 +32,59 @@ internal static class TestHarnessServer
 	private static readonly List<string> RecentErrors = new List<string>(32);
 	private static readonly object ErrorLock = new object();
 
+	private static readonly Dictionary<string, Func<Dictionary<string, string>, string>> ExternalCommands =
+		new Dictionary<string, Func<Dictionary<string, string>, string>>(StringComparer.OrdinalIgnoreCase);
+	private static Func<string> _benchmarkStatusProvider;
+
 	private static MonoBehaviour _host;
 	private static TcpListener _listener;
 	private static Thread _thread;
 	private static volatile bool _running;
 
-	// Rolling FPS stats
 	private static float _fpsWindowTimer;
 	private static int _fpsWindowFrames;
 	private static float _currentFps;
 	private static float _minFpsInWindow = 999f;
 	private static float _avgFps;
 	private static float _lastFrameMs;
+
+	private static readonly AccessTools.FieldRef<SpawnManager, HashSet<Waypoint>> SpawnPointsRef =
+		AccessTools.FieldRefAccess<SpawnManager, HashSet<Waypoint>>("spawnPoints");
+
+	internal static float CurrentFps => _currentFps;
+	internal static float AvgFps => _avgFps;
+	internal static float LastFrameMs => _lastFrameMs;
+
+	internal static void RegisterExternalCommand(string op, Func<Dictionary<string, string>, string> handler)
+	{
+		if (string.IsNullOrWhiteSpace(op) || handler == null) return;
+		ExternalCommands[op.Trim().ToLowerInvariant()] = handler;
+	}
+
+	internal static void RegisterBenchmarkStatusProvider(Func<string> provider)
+	{
+		_benchmarkStatusProvider = provider;
+	}
+
+	internal static void ClearExternalRegistrations()
+	{
+		ExternalCommands.Clear();
+		_benchmarkStatusProvider = null;
+	}
+
+	internal static int GetActivePortalCount()
+	{
+		if (SpawnManager.instance == null) return 0;
+		try
+		{
+			HashSet<Waypoint> pts = SpawnPointsRef(SpawnManager.instance);
+			if (pts != null && pts.Count > 0) return pts.Count;
+		}
+		catch
+		{
+		}
+		return SpawnManager.instance.tileSpawnUis != null ? SpawnManager.instance.tileSpawnUis.Count : 0;
+	}
 
 	internal static string GetOutputDir(string overrideDir = null)
 	{
@@ -198,10 +240,7 @@ internal static class TestHarnessServer
 				StreamReader reader = new StreamReader(ns, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
 
 				string requestLine = reader.ReadLine();
-				if (string.IsNullOrEmpty(requestLine))
-				{
-					return;
-				}
+				if (string.IsNullOrEmpty(requestLine)) return;
 				string[] reqParts = requestLine.Split(' ');
 				if (reqParts.Length < 2)
 				{
@@ -248,12 +287,6 @@ internal static class TestHarnessServer
 					ParseFormParams(body, queryParams);
 				}
 
-				if (method == "GET" && path.Equals("/benchmark", StringComparison.OrdinalIgnoreCase))
-				{
-					WriteHttp(ns, 200, BenchmarkSceneRunner.BuildStatusJson());
-					return;
-				}
-
 				using ManualResetEventSlim done = new ManualResetEventSlim(false);
 				PendingCommand cmd = new PendingCommand
 				{
@@ -280,14 +313,10 @@ internal static class TestHarnessServer
 
 	private static void ParseFormParams(string input, Dictionary<string, string> dest)
 	{
-		if (string.IsNullOrWhiteSpace(input))
-		{
-			return;
-		}
+		if (string.IsNullOrWhiteSpace(input)) return;
 		string trimmed = input.Trim();
 		if (trimmed.StartsWith("{"))
 		{
-			// Minimal flat JSON parser for {"op":"...","val":"..."}
 			trimmed = trimmed.Trim('{', '}');
 			string[] pairs = trimmed.Split(',');
 			foreach (string p in pairs)
@@ -345,7 +374,9 @@ internal static class TestHarnessServer
 
 		if (cmd.Path.Equals("/benchmark", StringComparison.OrdinalIgnoreCase))
 		{
-			cmd.ResponseJson = BenchmarkSceneRunner.BuildStatusJson();
+			cmd.ResponseJson = _benchmarkStatusProvider != null
+				? _benchmarkStatusProvider()
+				: "{\"ok\":true,\"isBusy\":false,\"phase\":\"idle\",\"note\":\"RogueTowerCheats not installed\"}";
 			cmd.Done.Set();
 			return;
 		}
@@ -389,11 +420,18 @@ internal static class TestHarnessServer
 				break;
 
 			case "select_tab":
-				if (cmd.Params.TryGetValue("tab", out string tabStr) && int.TryParse(tabStr, out int tabIdx))
+				if (cmd.Params.TryGetValue("tab", out string tabStr))
 				{
 					ModMenuUI.SetOpen(true);
-					ModMenuUI.SelectTabPublic(Mathf.Clamp(tabIdx, 0, 4));
-					cmd.ResponseJson = $"{{\"ok\":true,\"tab\":{tabIdx}}}";
+					if (int.TryParse(tabStr, out int tabIdx))
+					{
+						ModMenuUI.SelectTabIndex(tabIdx);
+					}
+					else
+					{
+						ModMenuUI.SelectTabByIdOrTitle(tabStr);
+					}
+					cmd.ResponseJson = $"{{\"ok\":true,\"tabIndex\":{ModMenuUI.CurrentTabIndex},\"tabId\":{JsonStr(ModMenuUI.CurrentTabId)}}}";
 				}
 				else
 				{
@@ -430,47 +468,6 @@ internal static class TestHarnessServer
 				}
 				cmd.ResponseJson = "{\"ok\":true}";
 				break;
-
-			case "set_tower":
-			{
-				cmd.Params.TryGetValue("id", out string id);
-				bool unlock = !cmd.Params.TryGetValue("unlock", out string uStr) || bool.Parse(uStr);
-				bool ok = HotbarAndLoadoutManager.SetItemUnlocked(id, unlock);
-				if (ModMenuUI.IsMenuOpen) ModMenuUI.RefreshOpenTabPublic();
-				cmd.ResponseJson = $"{{\"ok\":{(ok ? "true" : "false")}}}";
-				break;
-			}
-
-			case "apply_loadout":
-			{
-				int slot = 1;
-				if (cmd.Params.TryGetValue("slot", out string sStr)) int.TryParse(sStr, out slot);
-				int cnt = HotbarAndLoadoutManager.ApplyLoadoutSlot(Mathf.Clamp(slot, 1, 5));
-				if (ModMenuUI.IsMenuOpen) ModMenuUI.RefreshOpenTabPublic();
-				cmd.ResponseJson = $"{{\"ok\":true,\"unlocked\":{cnt}}}";
-				break;
-			}
-
-			case "move_hotbar":
-			{
-				cmd.Params.TryGetValue("id", out string id);
-				int delta = -1;
-				if (cmd.Params.TryGetValue("delta", out string dStr)) int.TryParse(dStr, out delta);
-				HotbarAndLoadoutManager.MoveItemInOrder(id, delta);
-				if (ModMenuUI.IsMenuOpen) ModMenuUI.RefreshOpenTabPublic();
-				cmd.ResponseJson = "{\"ok\":true}";
-				break;
-			}
-
-			case "set_cheat":
-			{
-				cmd.Params.TryGetValue("name", out string cname);
-				cmd.Params.TryGetValue("val", out string cval);
-				bool applied = ApplyCheatSetting(cname, cval);
-				if (ModMenuUI.IsMenuOpen) ModMenuUI.RefreshOpenTabPublic();
-				cmd.ResponseJson = $"{{\"ok\":{(applied ? "true" : "false")}}}";
-				break;
-			}
 
 			case "set_speed":
 			{
@@ -560,32 +557,6 @@ internal static class TestHarnessServer
 				cmd.ResponseJson = "{\"ok\":true}";
 				break;
 
-			case "load_benchmark":
-			{
-				if (BenchmarkSceneRunner.IsBusy)
-				{
-					cmd.StatusCode = 400;
-					cmd.ResponseJson = $"{{\"ok\":false,\"error\":{JsonStr("benchmark already running: " + BenchmarkSceneRunner.Phase)}}}";
-					break;
-				}
-				cmd.Params.TryGetValue("preset", out string presetId);
-				if (BenchmarkSceneRunner.FindPreset(presetId) == null)
-				{
-					cmd.StatusCode = 400;
-					cmd.ResponseJson = $"{{\"ok\":false,\"error\":{JsonStr("unknown preset: " + presetId)}}}";
-					break;
-				}
-				float dur = -1f;
-				if (cmd.Params.TryGetValue("duration", out string dStr)) float.TryParse(dStr, NumberStyles.Float, CultureInfo.InvariantCulture, out dur);
-				float warm = 2f;
-				if (cmd.Params.TryGetValue("warmup", out string wStr)) float.TryParse(wStr, NumberStyles.Float, CultureInfo.InvariantCulture, out warm);
-				bool record = !cmd.Params.TryGetValue("record", out string recStr) || !string.Equals(recStr, "false", StringComparison.OrdinalIgnoreCase);
-				cmd.Params.TryGetValue("outDir", out string bOutDir);
-				BenchmarkSceneRunner.StartBenchmark(_host, presetId, dur, warm, record, bOutDir);
-				cmd.ResponseJson = $"{{\"ok\":true,\"started\":true,\"preset\":{JsonStr(BenchmarkSceneRunner.ActivePresetId)}}}";
-				break;
-			}
-
 			case "set_mute":
 			{
 				string rawMute = null;
@@ -603,10 +574,6 @@ internal static class TestHarnessServer
 				cmd.ResponseJson = $"{{\"ok\":true,\"muted\":{(mute ? "true" : "false")}}}";
 				break;
 			}
-
-			case "benchmark_status":
-				cmd.ResponseJson = BenchmarkSceneRunner.BuildStatusJson();
-				break;
 
 			case "set_lagfix":
 			{
@@ -660,8 +627,15 @@ internal static class TestHarnessServer
 			}
 
 			default:
-				cmd.StatusCode = 400;
-				cmd.ResponseJson = $"{{\"ok\":false,\"error\":{JsonStr("unknown op: " + op)}}}";
+				if (ExternalCommands.TryGetValue(op, out Func<Dictionary<string, string>, string> extHandler) && extHandler != null)
+				{
+					cmd.ResponseJson = extHandler(cmd.Params) ?? "{\"ok\":true}";
+				}
+				else
+				{
+					cmd.StatusCode = 400;
+					cmd.ResponseJson = $"{{\"ok\":false,\"error\":{JsonStr("unknown op: " + op)}}}";
+				}
 				break;
 		}
 
@@ -682,39 +656,6 @@ internal static class TestHarnessServer
 			ModuleBridge.SetConfig(ModuleBridge.Keys.LagFix, "5. Audio", "DeduplicateCombatAudio", enabled);
 		}
 		return loaded;
-	}
-
-	private static bool ApplyCheatSetting(string name, string val)
-	{
-		if (string.IsNullOrEmpty(name)) return false;
-		bool.TryParse(val, out bool b);
-		switch (name.ToLowerInvariant())
-		{
-			case "infinitemoney": Plugin.InfiniteMoney.Value = b; return true;
-			case "infinitemana": Plugin.InfiniteMana.Value = b; return true;
-			case "infiniterange": Plugin.InfiniteRange.Value = b; CheatActions.RefreshAllPlacedTowers(); return true;
-			case "godmode": Plugin.GodMode.Value = b; return true;
-			case "infinitebanishes": Plugin.InfiniteBanishes.Value = b; ModuleBridge.SyncBanishOverride(b); return true;
-			case "notowerpricescaling": Plugin.NoTowerPriceScaling.Value = b; CheatActions.RefreshTowerPrices(); return true;
-			case "damagemultiplier":
-				if (float.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out float dm))
-				{
-					Plugin.DamageMultiplier.Value = dm;
-					CheatActions.RefreshAllPlacedTowers();
-					return true;
-				}
-				return false;
-			case "fireratemultiplier":
-				if (float.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out float fm))
-				{
-					Plugin.FireRateMultiplier.Value = fm;
-					CheatActions.RefreshAllPlacedTowers();
-					return true;
-				}
-				return false;
-			default:
-				return false;
-		}
 	}
 
 	private static bool ClickButtonByName(string name)
@@ -778,19 +719,22 @@ internal static class TestHarnessServer
 		return name;
 	}
 
+	private static readonly AccessTools.FieldRef<ResourceManager, int> GoldRef =
+		AccessTools.FieldRefAccess<ResourceManager, int>("gold");
+
 	private static string BuildStatusJson()
 	{
 		string scene = SceneManager.GetActiveScene().name;
-		int wave = CheatActions.GetCurrentWave();
-		int gold = CheatActions.GetCurrentGold();
+		int wave = SpawnManager.instance != null ? SpawnManager.instance.level : 0;
+		int gold = ResourceManager.instance != null ? GoldRef(ResourceManager.instance) : 0;
 		int hp = GameManager.instance != null ? GameManager.instance.health / 10 : 0;
 		int maxHp = GameManager.instance != null ? GameManager.instance.maxHealth / 10 : 0;
 		int enemies = SpawnManager.instance != null ? SpawnManager.instance.currentEnemies.Count : 0;
 		int placedTowers = UnityEngine.Object.FindObjectsOfType<Tower>().Length;
-		int activePortals = BenchmarkSceneRunner.GetActivePortalCount();
+		int activePortals = GetActivePortalCount();
 
-		List<string> hotbarTowers = CheatActions.IsInGameRun ? HotbarAndLoadoutManager.GetActiveHotbarIds(true) : new List<string>();
-		List<string> hotbarBlds = CheatActions.IsInGameRun ? HotbarAndLoadoutManager.GetActiveHotbarIds(false) : new List<string>();
+		List<string> hotbarTowers = Plugin.IsInGameRun && ModuleBridge.HasCleanQoL ? ModuleBridge.GetQoLActiveHotbarIds(true) : new List<string>();
+		List<string> hotbarBlds = Plugin.IsInGameRun && ModuleBridge.HasCleanQoL ? ModuleBridge.GetQoLActiveHotbarIds(false) : new List<string>();
 
 		string errorsJson;
 		lock (ErrorLock)
@@ -807,7 +751,7 @@ internal static class TestHarnessServer
 
 		return string.Format(
 			CultureInfo.InvariantCulture,
-			"{{\"ok\":true,\"scene\":{0},\"fps\":{1:0.0},\"avgFps\":{2:0.0},\"minFps\":{3:0.0},\"frameTimeMs\":{4:0.00},\"timeScale\":{5:0.##},\"wave\":{6},\"gold\":{7},\"hp\":{8},\"maxHp\":{9},\"enemies\":{10},\"placedTowers\":{11},\"activePortals\":{12},\"benchmarkPhase\":{13},\"themeMode\":{14},\"menuOpen\":{15},\"activeTab\":{16},\"cameraYaw\":{17:0.#},\"topDown\":{18},\"hotbarTowers\":{19},\"hotbarBuildings\":{20},\"errors\":{21}}}",
+			"{{\"ok\":true,\"scene\":{0},\"fps\":{1:0.0},\"avgFps\":{2:0.0},\"minFps\":{3:0.0},\"frameTimeMs\":{4:0.00},\"timeScale\":{5:0.##},\"wave\":{6},\"gold\":{7},\"hp\":{8},\"maxHp\":{9},\"enemies\":{10},\"placedTowers\":{11},\"activePortals\":{12},\"cheatsModLoaded\":{13},\"themeMode\":{14},\"menuOpen\":{15},\"activeTab\":{16},\"activeTabId\":{17},\"cameraYaw\":{18:0.#},\"topDown\":{19},\"hotbarTowers\":{20},\"hotbarBuildings\":{21},\"errors\":{22}}}",
 			JsonStr(scene),
 			_currentFps,
 			_avgFps,
@@ -821,10 +765,11 @@ internal static class TestHarnessServer
 			enemies,
 			placedTowers,
 			activePortals,
-			JsonStr(BenchmarkSceneRunner.Phase),
+			ModuleBridge.HasCheatsMod ? "true" : "false",
 			JsonStr(ModuleBridge.GetThemeModeName()),
 			ModMenuUI.IsMenuOpen ? "true" : "false",
 			ModMenuUI.CurrentTabIndex,
+			JsonStr(ModMenuUI.CurrentTabId),
 			ModuleBridge.GetCameraYaw(),
 			ModuleBridge.IsTopDownActive() ? "true" : "false",
 			JsonStringArray(hotbarTowers),

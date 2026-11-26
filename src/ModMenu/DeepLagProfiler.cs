@@ -7,7 +7,7 @@ using System.Text;
 using HarmonyLib;
 using UnityEngine;
 
-namespace RogueTowerCustomLevels;
+namespace RogueTowerModMenu;
 
 internal static class DeepLagProfiler
 {
@@ -46,7 +46,7 @@ internal static class DeepLagProfiler
 		"Dropper.SetDropPoints (Wave Path Raycast)"
 	};
 
-	private sealed class FrameSpike
+	internal sealed class FrameSpike
 	{
 		public int Frame;
 		public double FrameMs;
@@ -58,8 +58,42 @@ internal static class DeepLagProfiler
 		public string TopCauses;
 	}
 
+	internal sealed class SubsystemRow
+	{
+		public string Name;
+		public double MsPerFrame;
+		public double PctOfFrame;
+		public double CallsPerFrame;
+		public double MaxCallMs;
+	}
+
+	internal sealed class LiveUiSummary
+	{
+		public bool IsSampling;
+		public float RemainingSeconds;
+		public int Frames;
+		public double MeanFps;
+		public double P1LowFps;
+		public double MeanFrameMs;
+		public double PhysicsStepsPerFrame;
+		public double ScriptsMsPerFrame;
+		public double EngineGcMsPerFrame;
+		public int Over16Ms;
+		public int Over50Ms;
+		public int Gc0;
+		public int Gc1;
+		public int Gc2;
+		public int Towers;
+		public int ActivePortals;
+		public int Enemies;
+		public int Projectiles;
+		public int LiveParticles;
+		public List<SubsystemRow> TopSubsystems = new List<SubsystemRow>();
+		public List<FrameSpike> WorstSpikes = new List<FrameSpike>();
+	}
+
 	private static readonly double TicksToMs = 1000.0 / Stopwatch.Frequency;
-	private static readonly int TowerTypeCount = 18; // TowerType enum 0..17
+	private static readonly int TowerTypeCount = 18;
 
 	internal static volatile bool Active;
 
@@ -87,20 +121,21 @@ internal static class DeepLagProfiler
 
 	private static int _over16Ms, _over33Ms, _over50Ms, _over100Ms;
 	private static readonly List<FrameSpike> WorstSpikes = new List<FrameSpike>(6);
+	private static readonly List<float> InteractiveFrameDts = new List<float>(1024);
 
 	private static bool _hooksInstalled;
+	private static bool _interactiveSampling;
+	private static float _interactiveEndsAt;
+	private static LiveUiSummary _lastUiSummary = new LiveUiSummary();
+
+	internal static bool IsInteractiveSampling => _interactiveSampling;
 
 	internal static void Initialize(Harmony harmony)
 	{
-		if (_hooksInstalled || harmony == null)
-		{
-			return;
-		}
+		if (_hooksInstalled || harmony == null) return;
 		_hooksInstalled = true;
 
-		// Generic bucket hooks
 		PatchBucket(harmony, typeof(Tower), "DetectEnemies", (int)Bucket.TowerDetectEnemies, isDetectEnemies: true);
-
 		PatchBucket(harmony, typeof(Tower), "Update", (int)Bucket.TowerUpdateAndXP);
 		PatchBucket(harmony, typeof(FlameThrower), "Update", (int)Bucket.TowerUpdateAndXP);
 		PatchBucket(harmony, typeof(Dropper), "Update", (int)Bucket.TowerUpdateAndXP);
@@ -147,12 +182,129 @@ internal static class DeepLagProfiler
 		PatchBucket(harmony, typeof(ResourceManager), "UpdateResourceText", (int)Bucket.HudResourceText);
 		PatchBucket(harmony, typeof(Dropper), "SetDropPoints", (int)Bucket.DropperPathRaycast);
 
-		// Physics step counter (runs once per FixedUpdate tick)
 		MethodInfo bmFixed = AccessTools.DeclaredMethod(typeof(BuildingManager), "FixedUpdate");
 		if (bmFixed != null)
 		{
 			harmony.Patch(bmFixed, postfix: new HarmonyMethod(typeof(DeepLagProfiler), nameof(BuildingManager_FixedUpdate_Postfix)));
 		}
+	}
+
+	internal static void StartInteractiveSample(float durationSeconds = 10f)
+	{
+		InteractiveFrameDts.Clear();
+		BeginSession();
+		_interactiveSampling = true;
+		_interactiveEndsAt = Time.unscaledTime + Mathf.Clamp(durationSeconds, 2f, 30f);
+		_lastUiSummary = BuildLiveSummary(sampling: true, remaining: durationSeconds);
+	}
+
+	internal static void TickInteractiveSample()
+	{
+		if (!_interactiveSampling) return;
+		float dt = Time.unscaledDeltaTime;
+		if (dt > 0.0001f)
+		{
+			InteractiveFrameDts.Add(dt);
+			RecordRenderedFrame(dt);
+		}
+		if (Time.unscaledTime >= _interactiveEndsAt)
+		{
+			_interactiveSampling = false;
+			EndSessionAndBuildJson();
+			_lastUiSummary = BuildLiveSummary(sampling: false, remaining: 0f);
+		}
+	}
+
+	internal static LiveUiSummary GetUiSummary()
+	{
+		if (_interactiveSampling)
+		{
+			return BuildLiveSummary(sampling: true, remaining: Mathf.Max(0f, _interactiveEndsAt - Time.unscaledTime));
+		}
+		return _lastUiSummary ?? BuildLiveSummary(sampling: false, remaining: 0f);
+	}
+
+	private static LiveUiSummary BuildLiveSummary(bool sampling, float remaining)
+	{
+		int frameCount = InteractiveFrameDts.Count;
+		double meanFps = 0.0;
+		double p1Low = 0.0;
+		if (frameCount > 0)
+		{
+			float[] sorted = InteractiveFrameDts.ToArray();
+			Array.Sort(sorted);
+			double tot = 0.0;
+			for (int i = 0; i < sorted.Length; i++) tot += sorted[i];
+			meanFps = tot > 0 ? sorted.Length / tot : 0.0;
+			float p99 = sorted[Mathf.Clamp(Mathf.CeilToInt(0.99f * sorted.Length) - 1, 0, sorted.Length - 1)];
+			p1Low = p99 > 0f ? 1.0 / p99 : 0.0;
+		}
+
+		double frames = Math.Max(1, _renderedFrames);
+		double meanFrameMs = _totalSampleMs / frames;
+		double scriptsMs =
+			(TotalTicks[(int)Bucket.TowerDetectEnemies] +
+			 TotalTicks[(int)Bucket.TowerUpdateAndXP] +
+			 TotalTicks[(int)Bucket.TowerFireAll] +
+			 TotalTicks[(int)Bucket.ProjectilesAndAoE] +
+			 TotalTicks[(int)Bucket.EnemyUpdateAndDOT] +
+			 TotalTicks[(int)Bucket.PathfinderMove] +
+			 TotalTicks[(int)Bucket.WalkAnimator] +
+			 TotalTicks[(int)Bucket.DropperPathRaycast]) * TicksToMs / frames;
+
+		LiveUiSummary summary = new LiveUiSummary
+		{
+			IsSampling = sampling,
+			RemainingSeconds = remaining,
+			Frames = _renderedFrames,
+			MeanFps = meanFps,
+			P1LowFps = p1Low,
+			MeanFrameMs = meanFrameMs,
+			PhysicsStepsPerFrame = _physicsSteps / frames,
+			ScriptsMsPerFrame = scriptsMs,
+			EngineGcMsPerFrame = Math.Max(0.0, meanFrameMs - scriptsMs),
+			Over16Ms = _over16Ms,
+			Over50Ms = _over50Ms,
+			Gc0 = Math.Max(0, GC.CollectionCount(0) - _gc0Start),
+			Gc1 = Math.Max(0, GC.CollectionCount(1) - _gc1Start),
+			Gc2 = Math.Max(0, GC.CollectionCount(2) - _gc2Start),
+			Towers = UnityEngine.Object.FindObjectsOfType<Tower>().Length,
+			ActivePortals = TestHarnessServer.GetActivePortalCount(),
+			Enemies = SpawnManager.instance != null && SpawnManager.instance.currentEnemies != null ? SpawnManager.instance.currentEnemies.Count : 0,
+			Projectiles = UnityEngine.Object.FindObjectsOfType<Projectile>().Length,
+			LiveParticles = CountLiveParticles()
+		};
+
+		for (int i = 0; i < (int)Bucket.Count; i++)
+		{
+			double msF = (TotalTicks[i] * TicksToMs) / frames;
+			summary.TopSubsystems.Add(new SubsystemRow
+			{
+				Name = BucketNames[i],
+				MsPerFrame = msF,
+				PctOfFrame = meanFrameMs > 0.001 ? (msF / meanFrameMs) * 100.0 : 0.0,
+				CallsPerFrame = Calls[i] / frames,
+				MaxCallMs = MaxTicks[i] * TicksToMs
+			});
+		}
+		summary.TopSubsystems.Sort((a, b) => b.MsPerFrame.CompareTo(a.MsPerFrame));
+
+		for (int i = 0; i < WorstSpikes.Count; i++)
+		{
+			summary.WorstSpikes.Add(WorstSpikes[i]);
+		}
+		return summary;
+	}
+
+	private static int CountLiveParticles()
+	{
+		ParticleSystem[] all = UnityEngine.Object.FindObjectsOfType<ParticleSystem>();
+		int total = 0;
+		for (int i = 0; i < all.Length; i++)
+		{
+			if (all[i] != null) total += all[i].particleCount;
+		}
+		return total;
 	}
 
 	private static void PatchBucket(Harmony harmony, Type targetType, string methodName, int bucket, Type[] paramTypes = null, bool isDetectEnemies = false, bool isTowerFire = false)
@@ -162,23 +314,12 @@ internal static class DeepLagProfiler
 			MethodInfo target = paramTypes != null
 				? AccessTools.DeclaredMethod(targetType, methodName, paramTypes)
 				: AccessTools.DeclaredMethod(targetType, methodName);
-			if (target == null)
-			{
-				return;
-			}
+			if (target == null) return;
 
 			string preName;
 			string postName;
-			if (isDetectEnemies)
-			{
-				preName = nameof(DetectEnemies_Prefix);
-				postName = nameof(DetectEnemies_Postfix);
-			}
-			else if (isTowerFire)
-			{
-				preName = nameof(TowerFire_Prefix);
-				postName = nameof(TowerFire_Postfix);
-			}
+			if (isDetectEnemies) { preName = nameof(DetectEnemies_Prefix); postName = nameof(DetectEnemies_Postfix); }
+			else if (isTowerFire) { preName = nameof(TowerFire_Prefix); postName = nameof(TowerFire_Postfix); }
 			else
 			{
 				string suffix = bucket.ToString(CultureInfo.InvariantCulture);
@@ -188,10 +329,7 @@ internal static class DeepLagProfiler
 
 			MethodInfo pre = typeof(DeepLagProfiler).GetMethod(preName, BindingFlags.Static | BindingFlags.NonPublic);
 			MethodInfo post = typeof(DeepLagProfiler).GetMethod(postName, BindingFlags.Static | BindingFlags.NonPublic);
-			if (pre == null || post == null)
-			{
-				return;
-			}
+			if (pre == null || post == null) return;
 
 			harmony.Patch(
 				target,
@@ -206,6 +344,7 @@ internal static class DeepLagProfiler
 
 	internal static void BeginSession()
 	{
+		_interactiveSampling = false;
 		Array.Clear(TotalTicks, 0, TotalTicks.Length);
 		Array.Clear(MaxTicks, 0, MaxTicks.Length);
 		Array.Clear(FrameTicks, 0, FrameTicks.Length);
@@ -239,10 +378,7 @@ internal static class DeepLagProfiler
 
 	internal static void RecordRenderedFrame(float unscaledDt)
 	{
-		if (!Active)
-		{
-			return;
-		}
+		if (!Active) return;
 		_renderedFrames++;
 		double frameMs = unscaledDt * 1000.0;
 		_totalSampleMs += frameMs;
@@ -328,7 +464,6 @@ internal static class DeepLagProfiler
 		double physicsPerFrame = _physicsSteps / frames;
 		double meanFrameMs = _totalSampleMs / frames;
 
-		// Build sorted bucket entries
 		List<(int idx, double msPerFrame, double callsPerFrame, double pctOfFrame, double maxCallMs)> rows =
 			new List<(int, double, double, double, double)>((int)Bucket.Count);
 
@@ -360,19 +495,14 @@ internal static class DeepLagProfiler
 		}
 		subSb.Append(']');
 
-		// Top TowerTypes (combined DetectEnemies + Fire CPU time)
 		List<(string name, double fireMsF, double targetMsF, double totalMsF, double fireCallsF, double targetCallsF)> towerRows =
 			new List<(string, double, double, double, double, double)>(TowerTypeCount);
 		for (int t = 0; t < TowerTypeCount; t++)
 		{
 			double fMs = (TowerFireTicks[t] * TicksToMs) / frames;
 			double tMs = (TowerTargetTicks[t] * TicksToMs) / frames;
-			if (fMs + tMs <= 0.0001 && TowerFireCalls[t] == 0 && TowerTargetCalls[t] == 0)
-			{
-				continue;
-			}
-			string label = ((TowerType)t).ToString();
-			towerRows.Add((label, fMs, tMs, fMs + tMs, TowerFireCalls[t] / frames, TowerTargetCalls[t] / frames));
+			if (fMs + tMs <= 0.0001 && TowerFireCalls[t] == 0 && TowerTargetCalls[t] == 0) continue;
+			towerRows.Add((((TowerType)t).ToString(), fMs, tMs, fMs + tMs, TowerFireCalls[t] / frames, TowerTargetCalls[t] / frames));
 		}
 		towerRows.Sort((a, b) => b.totalMsF.CompareTo(a.totalMsF));
 
@@ -394,7 +524,6 @@ internal static class DeepLagProfiler
 		}
 		twSb.Append(']');
 
-		// Live Entity Census
 		int projectiles = UnityEngine.Object.FindObjectsOfType<Projectile>().Length;
 		int cannonballs = UnityEngine.Object.FindObjectsOfType<Cannonball>().Length;
 		int mortarShells = UnityEngine.Object.FindObjectsOfType<MorterShell>().Length;
@@ -403,13 +532,8 @@ internal static class DeepLagProfiler
 		int explosions = UnityEngine.Object.FindObjectsOfType<Explosion>().Length;
 		int biPlanes = UnityEngine.Object.FindObjectsOfType<BiPlane>().Length;
 		int damageNumbers = UnityEngine.Object.FindObjectsOfType<DamageNumber>().Length;
-
+		int totalParticles = CountLiveParticles();
 		ParticleSystem[] psAll = UnityEngine.Object.FindObjectsOfType<ParticleSystem>();
-		int totalParticles = 0;
-		foreach (ParticleSystem ps in psAll)
-		{
-			if (ps != null) totalParticles += ps.particleCount;
-		}
 
 		AudioSource[] audioAll = UnityEngine.Object.FindObjectsOfType<AudioSource>();
 		int playingAudio = 0;
@@ -555,37 +679,26 @@ internal static class DeepLagProfiler
 		}
 	}
 
-	// Explicit per-bucket wrappers (0=Detect, 1=TowerUpdate, 2=TowerFire, 3..11)
 	private static void Pre_1(out long __state) => BeginBucket(1, out __state);
 	private static void Post_1(long __state) => EndBucket(1, __state);
-
 	private static void Pre_3(out long __state) => BeginBucket(3, out __state);
 	private static void Post_3(long __state) => EndBucket(3, __state);
-
 	private static void Pre_4(out long __state) => BeginBucket(4, out __state);
 	private static void Post_4(long __state) => EndBucket(4, __state);
-
 	private static void Pre_5(out long __state) => BeginBucket(5, out __state);
 	private static void Post_5(long __state) => EndBucket(5, __state);
-
 	private static void Pre_6(out long __state) => BeginBucket(6, out __state);
 	private static void Post_6(long __state) => EndBucket(6, __state);
-
 	private static void Pre_7(out long __state) => BeginBucket(7, out __state);
 	private static void Post_7(long __state) => EndBucket(7, __state);
-
 	private static void Pre_8(out long __state) => BeginBucket(8, out __state);
 	private static void Post_8(long __state) => EndBucket(8, __state);
-
 	private static void Pre_9(out long __state) => BeginBucket(9, out __state);
 	private static void Post_9(long __state) => EndBucket(9, __state);
-
 	private static void Pre_10(out long __state) => BeginBucket(10, out __state);
 	private static void Post_10(long __state) => EndBucket(10, __state);
-
 	private static void Pre_11(out long __state) => BeginBucket(11, out __state);
 	private static void Post_11(long __state) => EndBucket(11, __state);
-
 	private static void Pre_12(out long __state) => BeginBucket(12, out __state);
 	private static void Post_12(long __state) => EndBucket(12, __state);
 

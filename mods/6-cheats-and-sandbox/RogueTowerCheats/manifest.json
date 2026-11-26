@@ -1,0 +1,9 @@
+{
+    "name":  "RogueTowerCheats",
+    "version_number":  "1.0.0",
+    "website_url":  "https://github.com/QueenRose4444/rogue-tower-mods",
+    "description":  "Optional Cheats \u0026 Sandbox mod for Rogue Tower (F6 or plugged directly into RogueTowerModMenu): Infinite Gold/Mana/Range/Banishes, God Mode, No Tower Price Scaling, Tower Damage/RPM multipliers, Tower \u0026 Loadout spawners, Card/Card-Tree grants, and Level-40 Endgame Stress Scenes. 100% AI-generated (Google Gemini \u0026 Anthropic Claude), designed by Rose.",
+    "dependencies":  [
+                         "bbepis-BepInEx_Rogue_Tower-5.4.1900"
+                     ]
+}

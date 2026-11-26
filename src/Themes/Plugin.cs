@@ -13,11 +13,11 @@ using UnityEngine.UI;
 [assembly: AssemblyCompany("RogueTowerThemes")]
 [assembly: AssemblyConfiguration("Release")]
 [assembly: AssemblyDescription("Clean-room customizable Light & Dark themes with non-destructive original state caching and instant hotkey / Mod Menu switching for Rogue Tower.")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
-[assembly: AssemblyInformationalVersion("1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyInformationalVersion("1.1.0")]
 [assembly: AssemblyProduct("RogueTowerThemes")]
 [assembly: AssemblyTitle("RogueTowerThemes")]
-[assembly: AssemblyVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.1.0.0")]
 
 namespace RogueTowerThemes;
 
@@ -34,13 +34,15 @@ public class Plugin : BaseUnityPlugin
 {
 	public const string PluginGuid = "Rosie.RogueTowerThemes";
 	public const string PluginName = "RogueTowerThemes";
-	public const string PluginVersion = "1.0.0";
+	public const string PluginVersion = "1.1.0";
 
 	internal static ManualLogSource Log;
 
+	public static ConfigEntry<int> ConfigSchemaVersion;
 	public static ConfigEntry<ThemeMode> ActiveMode;
 	public static ConfigEntry<KeyCode> QuickToggleKey;
 	public static ConfigEntry<bool> CycleIncludesVanilla;
+	public static ConfigEntry<bool> OverrideAmbient;
 
 	// Dark preset
 	public static ConfigEntry<string> DarkSkyHex;
@@ -94,25 +96,39 @@ public class Plugin : BaseUnityPlugin
 	{
 		Log = Logger;
 
+		ConfigSchemaVersion = Config.Bind("1. General", "ConfigSchemaVersion", 1, "Internal preset schema version used to migrate stale lighting defaults cleanly.");
 		ActiveMode = Config.Bind("1. General", "ActiveMode", ThemeMode.Dark, "Current visual theme: Vanilla, Dark, or Light.");
 		QuickToggleKey = Config.Bind("1. General", "QuickToggleKey", KeyCode.F7, "Hotkey to quickly toggle Light <-> Dark (or cycle modes).");
 		CycleIncludesVanilla = Config.Bind("1. General", "CycleIncludesVanilla", false, "If false, hotkey switches directly Dark <-> Light. If true, cycles Vanilla -> Dark -> Light.");
+		OverrideAmbient = Config.Bind("1. General", "OverrideAmbient", false, "If false (default), preserves Rogue Tower's vanilla ambient lighting so toon-shaded stone/roof shadows stay warm and readable without black crush or white road clipping.");
 
 		DarkSkyHex = Config.Bind("2. Dark Preset", "DarkSkyHex", "#0B1020", "Sky/camera clear color in Dark mode (#RRGGBB).");
-		DarkSunMultiplier = Config.Bind("2. Dark Preset", "DarkSunMultiplier", 0.72f, "Directional light intensity multiplier in Dark mode (1.0 = vanilla).");
-		DarkAmbientHex = Config.Bind("2. Dark Preset", "DarkAmbientHex", "#1A2238", "Scene ambient tint in Dark mode (#RRGGBB).");
-		DarkSunHex = Config.Bind("2. Dark Preset", "DarkSunHex", "#9FB0FF", "Main directional light tint in Dark mode.");
-		DarkFillHex = Config.Bind("2. Dark Preset", "DarkFillHex", "#C87AE0", "Secondary fill light tint in Dark mode.");
-		DarkUiBrightness = Config.Bind("2. Dark Preset", "DarkUiBrightness", 0.78f, "UI panel brightness multiplier (0.5 - 1.2) applied non-destructively in Dark mode.");
+		DarkSunMultiplier = Config.Bind("2. Dark Preset", "DarkSunMultiplier", 0.84f, "Primary directional sun intensity multiplier in Dark mode (1.0 = vanilla).");
+		DarkAmbientHex = Config.Bind("2. Dark Preset", "DarkAmbientHex", "#1A2238", "Scene ambient tint in Dark mode (#RRGGBB) when OverrideAmbient = true.");
+		DarkSunHex = Config.Bind("2. Dark Preset", "DarkSunHex", "#C8D4FF", "Main directional light tint in Dark mode.");
+		DarkFillHex = Config.Bind("2. Dark Preset", "DarkFillHex", "#DFC8EC", "Secondary fill light tint in Dark mode.");
+		DarkUiBrightness = Config.Bind("2. Dark Preset", "DarkUiBrightness", 0.90f, "UI panel brightness multiplier (0.5 - 1.2) applied non-destructively in Dark mode.");
 		DarkHighContrastText = Config.Bind("2. Dark Preset", "DarkHighContrastText", true, "Use crisp white modifier/HUD text in Dark mode.");
 
 		LightSkyHex = Config.Bind("3. Light Preset", "LightSkyHex", "#DCEBFF", "Sky/camera clear color in Light mode (#RRGGBB).");
-		LightSunMultiplier = Config.Bind("3. Light Preset", "LightSunMultiplier", 1.08f, "Directional light intensity multiplier in Light mode (1.0 = vanilla).");
-		LightAmbientHex = Config.Bind("3. Light Preset", "LightAmbientHex", "#6D7A8E", "Scene ambient tint in Light mode (#RRGGBB).");
+		LightSunMultiplier = Config.Bind("3. Light Preset", "LightSunMultiplier", 0.98f, "Primary directional sun intensity multiplier in Light mode (capped <= 1.0 by default so toon steps stay clean).");
+		LightAmbientHex = Config.Bind("3. Light Preset", "LightAmbientHex", "#6D7A8E", "Scene ambient tint in Light mode (#RRGGBB) when OverrideAmbient = true.");
 		LightSunHex = Config.Bind("3. Light Preset", "LightSunHex", "#FFF9EC", "Main directional light tint in Light mode.");
 		LightFillHex = Config.Bind("3. Light Preset", "LightFillHex", "#D8ECFF", "Secondary fill light tint in Light mode.");
-		LightUiBrightness = Config.Bind("3. Light Preset", "LightUiBrightness", 1.02f, "UI panel brightness multiplier (0.5 - 1.2) applied non-destructively in Light mode.");
+		LightUiBrightness = Config.Bind("3. Light Preset", "LightUiBrightness", 1.00f, "UI panel brightness multiplier (0.5 - 1.2) applied non-destructively in Light mode.");
 		LightHighContrastText = Config.Bind("3. Light Preset", "LightHighContrastText", false, "Keep dark readable HUD text in Light mode (true forces white text).");
+
+		if (ConfigSchemaVersion.Value < 2)
+		{
+			DarkSunMultiplier.Value = 0.84f;
+			DarkSunHex.Value = "#C8D4FF";
+			DarkFillHex.Value = "#DFC8EC";
+			DarkUiBrightness.Value = 0.90f;
+			LightSunMultiplier.Value = 0.98f;
+			LightUiBrightness.Value = 1.00f;
+			ConfigSchemaVersion.Value = 2;
+			Config.Save();
+		}
 
 		DisableLegacyDarkModeIfPresent();
 		SceneManager.sceneLoaded += OnSceneLoaded;
@@ -281,7 +297,9 @@ public class Plugin : BaseUnityPlugin
 	{
 		if (t == null) return true;
 		string rootName = t.root.name;
-		return rootName == "CardRenderer" || rootName == "RogueTowerModMenuCanvas";
+		return rootName == "CardRenderer"
+			|| rootName.StartsWith("RogueTower", StringComparison.Ordinal)
+			|| rootName == "CustomMapsEditorCanvas";
 	}
 
 	public static void ApplyTheme()
@@ -344,8 +362,16 @@ public class Plugin : BaseUnityPlugin
 		{
 			Camera.main.backgroundColor = skyColor;
 		}
-		RenderSettings.ambientLight = ambientColor;
-		RenderSettings.ambientIntensity = _origAmbientIntensity * (dark ? 0.75f : 1.15f);
+		if (OverrideAmbient != null && OverrideAmbient.Value)
+		{
+			RenderSettings.ambientLight = ambientColor;
+			RenderSettings.ambientIntensity = _origAmbientIntensity * (dark ? 0.75f : 1.15f);
+		}
+		else
+		{
+			RenderSettings.ambientLight = _origAmbient;
+			RenderSettings.ambientIntensity = _origAmbientIntensity;
+		}
 
 		bool isMainMenu = activeScene.name == "MainMenu";
 		foreach (var kv in OrigLights)
@@ -354,14 +380,16 @@ public class Plugin : BaseUnityPlugin
 			if (l == null) continue;
 			if (l.type == LightType.Directional)
 			{
-				l.intensity = kv.Value.Intensity * sunMult;
 				if (isMainMenu || l.name == "Directional Light")
 				{
-					l.color = sunColor;
+					l.intensity = kv.Value.Intensity * Mathf.Clamp(sunMult, 0.5f, 1.0f);
+					l.color = Color.Lerp(kv.Value.Color, sunColor, dark ? 0.45f : 0.20f);
 				}
 				else
 				{
-					l.color = fillColor;
+					// Keep 100% of vanilla fill directional light intensity so Tower & shaded roofs do not crush to black
+					l.intensity = kv.Value.Intensity;
+					l.color = Color.Lerp(kv.Value.Color, fillColor, dark ? 0.28f : 0.15f);
 				}
 			}
 		}

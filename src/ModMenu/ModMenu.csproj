@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>RogueTowerCustomLevels</AssemblyName>
-    <RootNamespace>RogueTowerCustomLevels</RootNamespace>
+    <AssemblyName>RogueTowerModMenu</AssemblyName>
+    <RootNamespace>RogueTowerModMenu</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="UnityEngine.ScreenCaptureModule">

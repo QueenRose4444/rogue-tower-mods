@@ -5,7 +5,7 @@ using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace RogueTowerCustomLevels;
+namespace RogueTowerCheats;
 
 internal enum CardFilterCategory
 {
@@ -55,13 +55,14 @@ internal static class CheatPatches
 		AccessTools.FieldRefAccess<TowerUI, Text>("rangeText");
 	private static readonly AccessTools.FieldRef<CardManager, UpgradeCard[]> CardsRef =
 		AccessTools.FieldRefAccess<CardManager, UpgradeCard[]>("cards");
+	private static readonly MethodInfo SetDropPointsMethod =
+		typeof(Dropper).GetMethod("SetDropPoints", BindingFlags.Instance | BindingFlags.NonPublic);
+	private static readonly AccessTools.FieldRef<RadarTower, BiPlane> RadarPlaneRef =
+		AccessTools.FieldRefAccess<RadarTower, BiPlane>("myPlane");
 
 	private static readonly Dictionary<int, float> LastAppliedRpmMultiplier = new Dictionary<int, float>();
 
-	internal static void ClearRpmTracking()
-	{
-		LastAppliedRpmMultiplier.Clear();
-	}
+	internal static void ClearRpmTracking() => LastAppliedRpmMultiplier.Clear();
 
 	[HarmonyPatch(typeof(ResourceManager), nameof(ResourceManager.CheckMoney))]
 	[HarmonyPrefix]
@@ -77,10 +78,7 @@ internal static class CheatPatches
 
 	[HarmonyPatch(typeof(ResourceManager), nameof(ResourceManager.Spend))]
 	[HarmonyPrefix]
-	private static bool ResourceManager_Spend_Prefix()
-	{
-		return !Plugin.InfiniteMoney.Value;
-	}
+	private static bool ResourceManager_Spend_Prefix() => !Plugin.InfiniteMoney.Value;
 
 	[HarmonyPatch(typeof(ResourceManager), nameof(ResourceManager.CheckMana))]
 	[HarmonyPrefix]
@@ -96,27 +94,18 @@ internal static class CheatPatches
 
 	[HarmonyPatch(typeof(ResourceManager), nameof(ResourceManager.SpendMana))]
 	[HarmonyPrefix]
-	private static bool ResourceManager_SpendMana_Prefix()
-	{
-		return !Plugin.InfiniteMana.Value;
-	}
+	private static bool ResourceManager_SpendMana_Prefix() => !Plugin.InfiniteMana.Value;
 
 	[HarmonyPatch(typeof(GameManager), nameof(GameManager.TakeDamage))]
 	[HarmonyPrefix]
-	private static bool GameManager_TakeDamage_Prefix()
-	{
-		return !Plugin.GodMode.Value;
-	}
+	private static bool GameManager_TakeDamage_Prefix() => !Plugin.GodMode.Value;
 
 	[HarmonyPatch(typeof(Tower), nameof(Tower.SetStats))]
 	[HarmonyPrefix]
 	[HarmonyPriority(Priority.First)]
 	private static void Tower_SetStats_Prefix(Tower __instance)
 	{
-		if (__instance == null)
-		{
-			return;
-		}
+		if (__instance == null) return;
 		int id = __instance.GetInstanceID();
 		if (LastAppliedRpmMultiplier.TryGetValue(id, out float prevMult) && prevMult > 0.01f)
 		{
@@ -130,29 +119,44 @@ internal static class CheatPatches
 	[HarmonyPriority(Priority.Last)]
 	private static void Tower_SetStats_Postfix(Tower __instance)
 	{
-		if (__instance == null)
+		if (__instance == null) return;
+
+		float dmgMult = Mathf.Max(0.1f, Plugin.DamageMultiplier.Value);
+		if (Mathf.Abs(dmgMult - 1f) > 0.01f)
 		{
-			return;
+			DamageRef(__instance) = Mathf.Max(1, Mathf.RoundToInt(DamageRef(__instance) * dmgMult));
+		}
+
+		float rpmMult = Mathf.Max(0.1f, Plugin.FireRateMultiplier.Value);
+		if (Mathf.Abs(rpmMult - 1f) > 0.01f)
+		{
+			__instance.rpm *= rpmMult;
+			LastAppliedRpmMultiplier[__instance.GetInstanceID()] = rpmMult;
 		}
 
 		if (Plugin.InfiniteRange.Value)
 		{
-			RangeRef(__instance) = Mathf.Max(__instance.range, 250f);
+			RangeRef(__instance) = Mathf.Max(RangeRef(__instance), 250f);
 		}
 
-		float dmgMult = Plugin.DamageMultiplier.Value;
-		if (dmgMult > 1.01f)
+		if (__instance is Dropper dropper)
 		{
-			float scaled = Mathf.Min((float)__instance.damage * dmgMult, 500000000f);
-			DamageRef(__instance) = Mathf.Max(__instance.damage, Mathf.RoundToInt(scaled));
+			dropper.rpm = Mathf.Max(1f, __instance.rpm);
+			SetDropPointsMethod?.Invoke(dropper, null);
+		}
+		else
+		{
+			RpsRef(__instance) = 60f / Mathf.Max(1f, __instance.rpm);
 		}
 
-		float rpmMult = Plugin.FireRateMultiplier.Value;
-		if (rpmMult > 1.01f)
+		if (__instance is RadarTower radar)
 		{
-			__instance.rpm *= rpmMult;
-			RpsRef(__instance) = Mathf.Max(0.015f, 60f / Mathf.Max(1f, __instance.rpm));
-			LastAppliedRpmMultiplier[__instance.GetInstanceID()] = rpmMult;
+			BiPlane plane = RadarPlaneRef(radar);
+			if (plane != null)
+			{
+				plane.damage = DamageRef(__instance);
+				plane.rps = RpsRef(__instance);
+			}
 		}
 	}
 
@@ -160,38 +164,29 @@ internal static class CheatPatches
 	[HarmonyPrefix]
 	private static bool Dropper_SetDropPoints_Prefix(Dropper __instance)
 	{
-		if (!Plugin.InfiniteRange.Value || __instance == null)
-		{
-			return true;
-		}
+		if (!Plugin.InfiniteRange.Value || __instance == null) return true;
 
-		// Avoid 500x500 raycast freeze when range = 250 by sampling existing path Waypoints directly
-		Waypoint[] waypoints = UnityEngine.Object.FindObjectsOfType<Waypoint>();
-		List<Vector2> pts = new List<Vector2>(64);
-		HashSet<int> seen = new HashSet<int>();
+		Waypoint[] allWaypoints = UnityEngine.Object.FindObjectsOfType<Waypoint>();
+		if (allWaypoints == null || allWaypoints.Length == 0) return true;
+
 		Vector3 towerPos = __instance.transform.position;
+		float rangeSq = __instance.range * __instance.range;
+		List<Vector2> pts = new List<Vector2>(256);
+		HashSet<int> seen = new HashSet<int>();
 
-		int step = (waypoints.Length > 80) ? Mathf.Max(1, waypoints.Length / 80) : 1;
-		for (int i = 0; i < waypoints.Length; i += step)
+		for (int i = 0; i < allWaypoints.Length; i++)
 		{
-			Waypoint wp = waypoints[i];
-			if (wp == null)
-			{
-				continue;
-			}
-			int dx = Mathf.RoundToInt(wp.transform.position.x - towerPos.x);
-			int dz = Mathf.RoundToInt(wp.transform.position.z - towerPos.z);
+			Waypoint wp = allWaypoints[i];
+			if (wp == null) continue;
+			Vector3 delta = wp.transform.position - towerPos;
+			if (delta.sqrMagnitude > rangeSq) continue;
+			int dx = Mathf.RoundToInt(delta.x);
+			int dz = Mathf.RoundToInt(delta.z);
 			int key = (dx + 512) * 2048 + (dz + 512);
-			if (seen.Add(key))
-			{
-				pts.Add(new Vector2(dx, dz));
-			}
+			if (seen.Add(key)) pts.Add(new Vector2(dx, dz));
 		}
 
-		if (pts.Count == 0)
-		{
-			pts.Add(Vector2.zero);
-		}
+		if (pts.Count == 0) pts.Add(Vector2.zero);
 
 		Vector2[] arr = pts.ToArray();
 		DropPointsRef(__instance) = arr;
@@ -208,10 +203,7 @@ internal static class CheatPatches
 		if (Plugin.InfiniteRange.Value && __instance != null)
 		{
 			Text rt = RangeTextRef(__instance);
-			if (rt != null)
-			{
-				rt.text = "Range: INF (250)";
-			}
+			if (rt != null) rt.text = "Range: INF (250)";
 		}
 	}
 
@@ -219,10 +211,7 @@ internal static class CheatPatches
 	[HarmonyPrefix]
 	private static void CardManager_ActivateCard_Prefix(CardManager __instance, int index)
 	{
-		if (__instance == null)
-		{
-			return;
-		}
+		if (__instance == null) return;
 		UpgradeCard[] cards = CardsRef(__instance);
 		if (cards != null && index >= 0 && index < cards.Length && cards[index] != null)
 		{
@@ -234,10 +223,7 @@ internal static class CheatPatches
 	[HarmonyPrefix]
 	private static void CardManager_ActivateMonsterCard_Prefix(CardManager __instance, int index)
 	{
-		if (__instance == null)
-		{
-			return;
-		}
+		if (__instance == null) return;
 		UpgradeCard[] cards = CardsRef(__instance);
 		if (cards != null && index >= 0 && index < cards.Length && cards[index] != null)
 		{
@@ -249,30 +235,21 @@ internal static class CheatPatches
 	[HarmonyPostfix]
 	private static void TowerFlyweight_AddNewTower_Postfix(TowerFlyweight __instance)
 	{
-		if (Plugin.NoTowerPriceScaling.Value && __instance != null)
-		{
-			CheatActions.ApplyFlatPriceToFlyweight(__instance);
-		}
+		if (Plugin.NoTowerPriceScaling.Value && __instance != null) CheatActions.ApplyFlatPriceToFlyweight(__instance);
 	}
 
 	[HarmonyPatch(typeof(TowerFlyweight), nameof(TowerFlyweight.RemoveTower))]
 	[HarmonyPostfix]
 	private static void TowerFlyweight_RemoveTower_Postfix(TowerFlyweight __instance)
 	{
-		if (Plugin.NoTowerPriceScaling.Value && __instance != null)
-		{
-			CheatActions.ApplyFlatPriceToFlyweight(__instance);
-		}
+		if (Plugin.NoTowerPriceScaling.Value && __instance != null) CheatActions.ApplyFlatPriceToFlyweight(__instance);
 	}
 
 	[HarmonyPatch(typeof(BuildingManager), nameof(BuildingManager.EnterBuildMode))]
 	[HarmonyPrefix]
 	private static void BuildingManager_EnterBuildMode_Prefix(ref int _priceIncrease)
 	{
-		if (Plugin.NoTowerPriceScaling.Value)
-		{
-			_priceIncrease = 0;
-		}
+		if (Plugin.NoTowerPriceScaling.Value) _priceIncrease = 0;
 	}
 }
 
@@ -315,8 +292,6 @@ internal static class CheatActions
 	private static readonly Dictionary<string, TreeGroupSummary> TreeGroupByKey = new Dictionary<string, TreeGroupSummary>();
 
 	private static bool _catalogBuilt;
-
-	// Cached reflection for optional CardDataLib
 	private static bool _cardDataLibChecked;
 	private static MethodInfo _cdlGetCardMethod;
 	private static PropertyInfo _cddCategoryProp;
@@ -342,45 +317,23 @@ internal static class CheatActions
 		{
 			int maxM = ResourceManager.instance.maxMana;
 			int missing = maxM - ManaRef(ResourceManager.instance);
-			if (missing > 0)
-			{
-				ResourceManager.instance.AddMana(missing);
-			}
+			if (missing > 0) ResourceManager.instance.AddMana(missing);
 		}
 	}
 
 	internal static void RefreshAllPlacedTowers()
 	{
-		if (TowerManager.instance != null)
-		{
-			TowerManager.instance.UpdateAllTowers();
-		}
+		if (TowerManager.instance != null) TowerManager.instance.UpdateAllTowers();
 		TowerUI openUi = UnityEngine.Object.FindObjectOfType<TowerUI>();
 		if (openUi != null)
 		{
 			Tower t = AccessTools.FieldRefAccess<TowerUI, Tower>("myTower")(openUi);
-			if (t != null)
-			{
-				openUi.SetStats(t);
-			}
+			if (t != null) openUi.SetStats(t);
 		}
 	}
 
-	internal static void RecordCardGranted(UpgradeCard card)
-	{
-		if (card != null)
-		{
-			GrantedCardsThisRun.Add(card);
-		}
-	}
-
-	internal static void UnrecordCardGranted(UpgradeCard card)
-	{
-		if (card != null)
-		{
-			GrantedCardsThisRun.Remove(card);
-		}
-	}
+	internal static void RecordCardGranted(UpgradeCard card) { if (card != null) GrantedCardsThisRun.Add(card); }
+	internal static void UnrecordCardGranted(UpgradeCard card) { if (card != null) GrantedCardsThisRun.Remove(card); }
 
 	private static readonly AccessTools.FieldRef<TowerFlyweight, int> FlyBasePriceRef =
 		AccessTools.FieldRefAccess<TowerFlyweight, int>("basePrice");
@@ -403,10 +356,7 @@ internal static class CheatActions
 		foreach (TowerFlyweight fw in all)
 		{
 			if (fw == null) continue;
-			if (flat)
-			{
-				ApplyFlatPriceToFlyweight(fw);
-			}
+			if (flat) ApplyFlatPriceToFlyweight(fw);
 			else
 			{
 				int baseP = FlyBasePriceRef(fw);
@@ -420,14 +370,8 @@ internal static class CheatActions
 
 	internal static bool IsCardOwned(CardCatalogEntry entry)
 	{
-		if (entry == null || entry.Card == null)
-		{
-			return false;
-		}
-		if (GrantedCardsThisRun.Contains(entry.Card))
-		{
-			return true;
-		}
+		if (entry == null || entry.Card == null) return false;
+		if (GrantedCardsThisRun.Contains(entry.Card)) return true;
 		if (entry.Card is TowerUnlockCard tuc && TowerUnlockManager.instance != null)
 		{
 			GameObject uiObj = TowerUIObjectRef(tuc);
@@ -436,10 +380,7 @@ internal static class CheatActions
 				List<GameObject> list = IsTowerRef(tuc)
 					? UnlockedTowersRef(TowerUnlockManager.instance)
 					: UnlockedBuildingsRef(TowerUnlockManager.instance);
-				if (list != null && list.Contains(uiObj))
-				{
-					return true;
-				}
+				if (list != null && list.Contains(uiObj)) return true;
 			}
 		}
 		return false;
@@ -447,30 +388,16 @@ internal static class CheatActions
 
 	internal static bool IsCardCurrentlyAvailable(CardCatalogEntry entry)
 	{
-		if (entry == null || entry.Card == null || CardManager.instance == null)
-		{
-			return false;
-		}
+		if (entry == null || entry.Card == null || CardManager.instance == null) return false;
 		List<UpgradeCard> pool = entry.IsMonster
 			? AvailableMonsterCardsRef(CardManager.instance)
 			: AvailableCardsRef(CardManager.instance);
 		return pool != null && pool.Contains(entry.Card);
 	}
 
-	internal static int GetCurrentGold()
-	{
-		return ResourceManager.instance != null ? GoldRef(ResourceManager.instance) : 0;
-	}
-
-	internal static int GetCurrentWave()
-	{
-		return SpawnManager.instance != null ? SpawnManager.instance.level : 0;
-	}
-
-	internal static int GetMetaXP()
-	{
-		return UpgradeManager.instance != null ? UpgradeManager.instance.xp : PlayerPrefs.GetInt("XP", 0);
-	}
+	internal static int GetCurrentGold() => ResourceManager.instance != null ? GoldRef(ResourceManager.instance) : 0;
+	internal static int GetCurrentWave() => SpawnManager.instance != null ? SpawnManager.instance.level : 0;
+	internal static int GetMetaXP() => UpgradeManager.instance != null ? UpgradeManager.instance.xp : PlayerPrefs.GetInt("XP", 0);
 
 	internal static int ActiveCheatCount()
 	{
@@ -488,11 +415,7 @@ internal static class CheatActions
 
 	internal static void AddGold(int amount)
 	{
-		if (ResourceManager.instance != null)
-		{
-			ResourceManager.instance.AddMoney(amount);
-			SFXManager.instance?.ButtonClick();
-		}
+		if (ResourceManager.instance != null) { ResourceManager.instance.AddMoney(amount); SFXManager.instance?.ButtonClick(); }
 	}
 
 	internal static void FillMana()
@@ -500,10 +423,7 @@ internal static class CheatActions
 		if (ResourceManager.instance != null)
 		{
 			int missing = ResourceManager.instance.maxMana - ManaRef(ResourceManager.instance);
-			if (missing > 0)
-			{
-				ResourceManager.instance.AddMana(missing);
-			}
+			if (missing > 0) ResourceManager.instance.AddMana(missing);
 			SFXManager.instance?.ButtonClick();
 		}
 	}
@@ -520,73 +440,41 @@ internal static class CheatActions
 
 	internal static void AddManaRegen(int amount)
 	{
-		if (ResourceManager.instance != null)
-		{
-			ResourceManager.instance.UpdateManaGatherRate(amount);
-			SFXManager.instance?.ButtonClick();
-		}
+		if (ResourceManager.instance != null) { ResourceManager.instance.UpdateManaGatherRate(amount); SFXManager.instance?.ButtonClick(); }
 	}
 
 	internal static void HealTowerFull()
 	{
-		if (GameManager.instance != null)
-		{
-			GameManager.instance.RepairTower(GameManager.instance.maxHealth);
-			SFXManager.instance?.ButtonClick();
-		}
+		if (GameManager.instance != null) { GameManager.instance.RepairTower(GameManager.instance.maxHealth); SFXManager.instance?.ButtonClick(); }
 	}
 
 	internal static void AddMaxTowerHealth(int amount)
 	{
-		if (GameManager.instance != null)
-		{
-			GameManager.instance.IncreaseTowerHealth(amount);
-			SFXManager.instance?.ButtonClick();
-		}
+		if (GameManager.instance != null) { GameManager.instance.IncreaseTowerHealth(amount); SFXManager.instance?.ButtonClick(); }
 	}
 
 	internal static void AddMetaXP(int amount)
 	{
-		if (UpgradeManager.instance != null)
-		{
-			UpgradeManager.instance.AddXP(amount);
-		}
-		else
-		{
-			PlayerPrefs.SetInt("XP", PlayerPrefs.GetInt("XP", 0) + amount);
-			PlayerPrefs.Save();
-		}
+		if (UpgradeManager.instance != null) UpgradeManager.instance.AddXP(amount);
+		else { PlayerPrefs.SetInt("XP", PlayerPrefs.GetInt("XP", 0) + amount); PlayerPrefs.Save(); }
 		SFXManager.instance?.ButtonClick();
 	}
 
 	internal static void DrawCardsNow(int count = 3)
 	{
-		if (CardManager.instance != null)
-		{
-			CardManager.instance.DrawCards(count);
-		}
+		if (CardManager.instance != null) CardManager.instance.DrawCards(count);
 	}
 
 	internal static int KillAllEnemies()
 	{
-		if (SpawnManager.instance == null || SpawnManager.instance.currentEnemies == null || EnemyDieMethod == null)
-		{
-			return 0;
-		}
+		if (SpawnManager.instance == null || SpawnManager.instance.currentEnemies == null || EnemyDieMethod == null) return 0;
 		List<Enemy> snapshot = new List<Enemy>(SpawnManager.instance.currentEnemies);
 		int killed = 0;
 		foreach (Enemy e in snapshot)
 		{
-			if (e != null)
-			{
-				EnemyDieMethod.Invoke(e, null);
-				killed++;
-			}
+			if (e != null) { EnemyDieMethod.Invoke(e, null); killed++; }
 		}
-		if (killed > 0)
-		{
-			SFXManager.instance?.ButtonClick();
-		}
+		if (killed > 0) SFXManager.instance?.ButtonClick();
 		return killed;
 	}
 
@@ -616,13 +504,7 @@ internal static class CheatActions
 		for (int i = 0; i < levels; i++)
 		{
 			int lvl = LevelRef(tower);
-			float curXp = statKind switch
-			{
-				0 => HealthXPRef(tower),
-				1 => ArmorXPRef(tower),
-				_ => ShieldXPRef(tower)
-			};
-
+			float curXp = statKind switch { 0 => HealthXPRef(tower), 1 => ArmorXPRef(tower), _ => ShieldXPRef(tower) };
 			int cost = (10 * lvl - (int)curXp) * mult;
 			if (!freeGrant)
 			{
@@ -634,18 +516,9 @@ internal static class CheatActions
 			float xpSub = 10 * lvl - cost / mult;
 			switch (statKind)
 			{
-				case 0:
-					HealthXPRef(tower) -= xpSub;
-					HealthDamageUpgradeRef(tower)++;
-					break;
-				case 1:
-					ArmorXPRef(tower) -= xpSub;
-					ArmorDamageUpgradeRef(tower)++;
-					break;
-				default:
-					ShieldXPRef(tower) -= xpSub;
-					ShieldDamageUpgradeRef(tower)++;
-					break;
+				case 0: HealthXPRef(tower) -= xpSub; HealthDamageUpgradeRef(tower)++; break;
+				case 1: ArmorXPRef(tower) -= xpSub; ArmorDamageUpgradeRef(tower)++; break;
+				default: ShieldXPRef(tower) -= xpSub; ShieldDamageUpgradeRef(tower)++; break;
 			}
 
 			LevelRef(tower) = lvl + 1;
@@ -658,18 +531,12 @@ internal static class CheatActions
 	internal static int UpgradeAllPlacedTowers(int levelsPerStat = 10)
 	{
 		Tower[] towers = UnityEngine.Object.FindObjectsOfType<Tower>();
-		if (towers == null || towers.Length == 0)
-		{
-			return 0;
-		}
+		if (towers == null || towers.Length == 0) return 0;
 		bool free = Plugin.InfiniteMoney.Value;
 		int upgradedTowers = 0;
 		foreach (Tower t in towers)
 		{
-			if (t == null)
-			{
-				continue;
-			}
+			if (t == null) continue;
 			int h = UpgradeTowerStatLevels(t, 0, levelsPerStat, free);
 			int a = UpgradeTowerStatLevels(t, 1, levelsPerStat, free);
 			int s = UpgradeTowerStatLevels(t, 2, levelsPerStat, free);
@@ -680,27 +547,21 @@ internal static class CheatActions
 				upgradedTowers++;
 			}
 		}
-		if (upgradedTowers > 0)
-		{
-			SFXManager.instance?.ButtonClick();
-		}
+		if (upgradedTowers > 0) SFXManager.instance?.ButtonClick();
 		TowerUI openUi = UnityEngine.Object.FindObjectOfType<TowerUI>();
 		if (openUi != null)
 		{
 			Tower t = AccessTools.FieldRefAccess<TowerUI, Tower>("myTower")(openUi);
-			if (t != null)
-			{
-				openUi.SetStats(t);
-			}
+			if (t != null) openUi.SetStats(t);
 		}
 		return upgradedTowers;
 	}
 
 	internal static int OpenAllChestsCheat()
 	{
-		if (ModuleBridge.HasCleanQoL)
+		if (CheatBridge.HasCleanQoL)
 		{
-			int res = ModuleBridge.OpenAllChests();
+			int res = CheatBridge.OpenAllChests();
 			if (res >= 0) return res;
 		}
 		if (CardManager.instance == null) return 0;
@@ -712,10 +573,7 @@ internal static class CheatActions
 		{
 			if (chest == null) continue;
 			int drops = Mathf.Max(1, chest.numberOfDrops);
-			for (int d = 0; d < drops; d++)
-			{
-				CardManager.instance.DrawCards(cardDraw);
-			}
+			for (int d = 0; d < drops; d++) CardManager.instance.DrawCards(cardDraw);
 			UnityEngine.Object.Destroy(chest.gameObject);
 			count++;
 		}
@@ -725,9 +583,9 @@ internal static class CheatActions
 
 	internal static int ChopAllTreesCheat()
 	{
-		if (ModuleBridge.HasCleanQoL)
+		if (CheatBridge.HasCleanQoL)
 		{
-			int res = ModuleBridge.ChopAllTrees();
+			int res = CheatBridge.ChopAllTrees();
 			if (res >= 0) return res;
 		}
 		TreeSpawn[] trees = UnityEngine.Object.FindObjectsOfType<TreeSpawn>();
@@ -752,30 +610,12 @@ internal static class CheatActions
 		return count;
 	}
 
-	internal static IReadOnlyList<CardCatalogEntry> GetAllEntries()
-	{
-		EnsureCatalogBuilt();
-		return AllEntries;
-	}
-
-	internal static IReadOnlyList<CardCatalogEntry> GetUnlockEntries()
-	{
-		EnsureCatalogBuilt();
-		return UnlockEntries;
-	}
-
-	internal static IReadOnlyList<TreeGroupSummary> GetTreeGroups()
-	{
-		EnsureCatalogBuilt();
-		return TreeGroups;
-	}
+	internal static IReadOnlyList<CardCatalogEntry> GetAllEntries() { EnsureCatalogBuilt(); return AllEntries; }
+	internal static IReadOnlyList<TreeGroupSummary> GetTreeGroups() { EnsureCatalogBuilt(); return TreeGroups; }
 
 	internal static void EnsureCatalogBuilt()
 	{
-		if (_catalogBuilt || CardManager.instance == null)
-		{
-			return;
-		}
+		if (_catalogBuilt || CardManager.instance == null) return;
 		_catalogBuilt = true;
 		EnsureCardDataLibReflected();
 
@@ -789,10 +629,7 @@ internal static class CheatActions
 		{
 			foreach (UpgradeCard mc in availMonster)
 			{
-				if (mc != null && monsterSet.Add(mc))
-				{
-					mQueue.Enqueue(mc);
-				}
+				if (mc != null && monsterSet.Add(mc)) mQueue.Enqueue(mc);
 			}
 		}
 		while (mQueue.Count > 0)
@@ -801,25 +638,18 @@ internal static class CheatActions
 			if (cur.unlocks == null) continue;
 			foreach (UpgradeCard child in cur.unlocks)
 			{
-				if (child != null && monsterSet.Add(child))
-				{
-					mQueue.Enqueue(child);
-				}
+				if (child != null && monsterSet.Add(child)) mQueue.Enqueue(child);
 			}
 		}
 
 		HashSet<UpgradeCard> discovered = new HashSet<UpgradeCard>();
 		Queue<UpgradeCard> q = new Queue<UpgradeCard>();
-
 		void Seed(IEnumerable<UpgradeCard> src)
 		{
 			if (src == null) return;
 			foreach (UpgradeCard c in src)
 			{
-				if (c != null && discovered.Add(c))
-				{
-					q.Enqueue(c);
-				}
+				if (c != null && discovered.Add(c)) q.Enqueue(c);
 			}
 		}
 
@@ -827,13 +657,9 @@ internal static class CheatActions
 		Seed(availNormal);
 		Seed(availMonster);
 
-		UpgradeCard[] sceneCards = Resources.FindObjectsOfTypeAll<UpgradeCard>();
-		foreach (UpgradeCard c in sceneCards)
+		foreach (UpgradeCard c in Resources.FindObjectsOfTypeAll<UpgradeCard>())
 		{
-			if (c != null && c.gameObject.scene.IsValid() && discovered.Add(c))
-			{
-				q.Enqueue(c);
-			}
+			if (c != null && c.gameObject.scene.IsValid() && discovered.Add(c)) q.Enqueue(c);
 		}
 
 		while (q.Count > 0)
@@ -842,47 +668,33 @@ internal static class CheatActions
 			if (cur.unlocks == null) continue;
 			foreach (UpgradeCard child in cur.unlocks)
 			{
-				if (child != null && discovered.Add(child))
-				{
-					q.Enqueue(child);
-				}
+				if (child != null && discovered.Add(child)) q.Enqueue(child);
 			}
 		}
 
-		// Build reverse-parent map so orphan cards can inherit tree grouping from parent if needed
 		Dictionary<UpgradeCard, UpgradeCard> parentMap = new Dictionary<UpgradeCard, UpgradeCard>();
 		foreach (UpgradeCard card in discovered)
 		{
 			if (card.unlocks == null) continue;
 			foreach (UpgradeCard child in card.unlocks)
 			{
-				if (child != null && !parentMap.ContainsKey(child))
-				{
-					parentMap[child] = card;
-				}
+				if (child != null && !parentMap.ContainsKey(child)) parentMap[child] = card;
 			}
 		}
 
 		foreach (UpgradeCard card in discovered)
 		{
-			if (card is MonsterUpgradeCard)
-			{
-				monsterSet.Add(card);
-			}
+			if (card is MonsterUpgradeCard) monsterSet.Add(card);
 		}
 
 		foreach (UpgradeCard card in discovered)
 		{
-			CardCatalogEntry entry = BuildCatalogEntry(card, monsterSet.Contains(card), parentMap);
+			CardCatalogEntry entry = BuildCatalogEntry(card, monsterSet.Contains(card));
 			EntryByCard[card] = entry;
 			AllEntries.Add(entry);
-			if (entry.IsTowerUnlock || entry.IsBuildingUnlock)
-			{
-				UnlockEntries.Add(entry);
-			}
+			if (entry.IsTowerUnlock || entry.IsBuildingUnlock) UnlockEntries.Add(entry);
 		}
 
-		// Propagate tree key along unlocks for any generic UpgradeCard children (e.g. ManaBank -> Savings)
 		bool changed;
 		int passes = 0;
 		do
@@ -926,18 +738,10 @@ internal static class CheatActions
 	{
 		foreach (CardCatalogEntry entry in AllEntries)
 		{
-			if (entry.IsMonster)
-			{
-				continue;
-			}
+			if (entry.IsMonster) continue;
 			if (!TreeGroupByKey.TryGetValue(entry.TreeKey, out TreeGroupSummary group))
 			{
-				group = new TreeGroupSummary
-				{
-					TreeKey = entry.TreeKey,
-					TreeLabel = entry.TreeLabel,
-					Category = entry.Category
-				};
+				group = new TreeGroupSummary { TreeKey = entry.TreeKey, TreeLabel = entry.TreeLabel, Category = entry.Category };
 				TreeGroupByKey[entry.TreeKey] = group;
 				TreeGroups.Add(group);
 			}
@@ -947,10 +751,7 @@ internal static class CheatActions
 		foreach (TreeGroupSummary group in TreeGroups)
 		{
 			HashSet<UpgradeCard> inGroup = new HashSet<UpgradeCard>();
-			foreach (CardCatalogEntry ce in group.Cards)
-			{
-				inGroup.Add(ce.Card);
-			}
+			foreach (CardCatalogEntry ce in group.Cards) inGroup.Add(ce.Card);
 
 			foreach (CardCatalogEntry ce in group.Cards)
 			{
@@ -958,10 +759,7 @@ internal static class CheatActions
 				{
 					bool hasParentInGroup = parentMap.TryGetValue(ce.Card, out UpgradeCard p) && inGroup.Contains(p);
 					bool parentIsTowerRoot = hasParentInGroup && p is TowerUnlockCard;
-					if (!hasParentInGroup || parentIsTowerRoot)
-					{
-						group.BranchRoots.Add(ce);
-					}
+					if (!hasParentInGroup || parentIsTowerRoot) group.BranchRoots.Add(ce);
 				}
 			}
 		}
@@ -973,7 +771,7 @@ internal static class CheatActions
 		});
 	}
 
-	private static CardCatalogEntry BuildCatalogEntry(UpgradeCard card, bool isMonster, Dictionary<UpgradeCard, UpgradeCard> parentMap)
+	private static CardCatalogEntry BuildCatalogEntry(UpgradeCard card, bool isMonster)
 	{
 		string unlockName = UnlockNameRef(card) ?? string.Empty;
 		string title = string.IsNullOrEmpty(card.title) ? card.name : card.title;
@@ -1013,97 +811,46 @@ internal static class CheatActions
 		{
 			cat = CardFilterCategory.DOT;
 			string lower = (unlockName + " " + title + " " + desc).ToLowerInvariant();
-			if (lower.Contains("bleed"))
-			{
-				treeKey = "DOT_Bleed";
-				treeLabel = "DOT: Bleed";
-			}
-			else if (lower.Contains("burn") || lower.Contains("pyro") || lower.Contains("immolat") || lower.Contains("cooker"))
-			{
-				treeKey = "DOT_Burn";
-				treeLabel = "DOT: Burn";
-			}
-			else if (lower.Contains("poison") || lower.Contains("fume"))
-			{
-				treeKey = "DOT_Poison";
-				treeLabel = "DOT: Poison";
-			}
-			else
-			{
-				treeKey = "DOT_General";
-				treeLabel = "DOT: General";
-			}
+			if (lower.Contains("bleed")) { treeKey = "DOT_Bleed"; treeLabel = "DOT: Bleed"; }
+			else if (lower.Contains("burn") || lower.Contains("pyro") || lower.Contains("immolat") || lower.Contains("cooker")) { treeKey = "DOT_Burn"; treeLabel = "DOT: Burn"; }
+			else if (lower.Contains("poison") || lower.Contains("fume")) { treeKey = "DOT_Poison"; treeLabel = "DOT: Poison"; }
+			else { treeKey = "DOT_General"; treeLabel = "DOT: General"; }
 		}
-		else if (card is HauntedHouseUpgrade)
+		else if (card is HauntedHouseUpgrade) { cat = CardFilterCategory.Buildings; treeKey = "Building_HauntedHouse"; treeLabel = "Haunted House"; }
+		else if (card is UniversityUpgrade) { cat = CardFilterCategory.Buildings; treeKey = "Building_University"; treeLabel = "University"; }
+		else if (card is GoldRushCard) { cat = CardFilterCategory.Buildings; treeKey = "Building_Mine"; treeLabel = "Mine"; }
+		else if (card is TreeUpgradeCard) { cat = CardFilterCategory.Buffs; treeKey = "Buff_Trees"; treeLabel = "Buffs: Trees & Chests"; }
+		else if (TryQueryCardDataLib(unlockName, title, out string cdlCat, out string cdlSub))
 		{
-			cat = CardFilterCategory.Buildings;
-			treeKey = "Building_HauntedHouse";
-			treeLabel = "Haunted House";
-		}
-		else if (card is UniversityUpgrade)
-		{
-			cat = CardFilterCategory.Buildings;
-			treeKey = "Building_University";
-			treeLabel = "University";
-		}
-		else if (card is GoldRushCard)
-		{
-			cat = CardFilterCategory.Buildings;
-			treeKey = "Building_Mine";
-			treeLabel = "Mine";
-		}
-		else if (card is TreeUpgradeCard)
-		{
-			cat = CardFilterCategory.Buffs;
-			treeKey = "Buff_Trees";
-			treeLabel = "Buffs: Trees & Chests";
-		}
-		else if (card is ManaGenUpgradeCard)
-		{
-			cat = CardFilterCategory.Buffs;
-			treeKey = "Buff_Mana";
-			treeLabel = "Buffs: Mana";
-		}
-		else if (card is MaxHealthUpgradeCard)
-		{
-			cat = CardFilterCategory.Buffs;
-			treeKey = "Buff_TowerHealth";
-			treeLabel = "Buffs: Tower Health";
-		}
-
-		// Refine with CardDataLib if available
-		if (TryQueryCardDataLib(unlockName, title, out string cdlCat, out string cdlSub))
-		{
-			if (cdlCat == "Monster")
+			switch (cdlCat.ToLowerInvariant())
 			{
-				cat = CardFilterCategory.Monsters;
-				treeKey = "Monster";
-				treeLabel = "Monster Cards";
-				isMonster = true;
-			}
-			else if (cdlCat == "Tower")
-			{
-				cat = CardFilterCategory.Towers;
-				treeKey = "Tower_" + cdlSub;
-				treeLabel = InsertSpacesCamelCase(cdlSub);
-			}
-			else if (cdlCat == "Building")
-			{
-				cat = CardFilterCategory.Buildings;
-				treeKey = "Building_" + cdlSub;
-				treeLabel = InsertSpacesCamelCase(cdlSub);
-			}
-			else if (cdlCat == "DOT")
-			{
-				cat = CardFilterCategory.DOT;
-				treeKey = "DOT_" + cdlSub;
-				treeLabel = "DOT: " + cdlSub.Replace("DOT", "");
-			}
-			else if (cdlCat == "Buff")
-			{
-				cat = CardFilterCategory.Buffs;
-				treeKey = "Buff_" + cdlSub;
-				treeLabel = "Buffs: " + InsertSpacesCamelCase(cdlSub).Replace("Buff", "").Trim();
+				case "tower":
+					cat = CardFilterCategory.Towers;
+					string k = cdlSub.Replace(" ", "");
+					treeKey = "Tower_" + k;
+					treeLabel = cdlSub;
+					break;
+				case "building":
+					cat = CardFilterCategory.Buildings;
+					treeKey = "Building_" + cdlSub.Replace(" ", "");
+					treeLabel = cdlSub;
+					break;
+				case "dot":
+					cat = CardFilterCategory.DOT;
+					treeKey = "DOT_" + cdlSub.Replace(" ", "");
+					treeLabel = "DOT: " + cdlSub;
+					break;
+				case "monster":
+					cat = CardFilterCategory.Monsters;
+					treeKey = "Monster";
+					treeLabel = "Monster Cards";
+					isMonster = true;
+					break;
+				default:
+					cat = CardFilterCategory.Buffs;
+					treeKey = "Buff_" + cdlSub.Replace(" ", "");
+					treeLabel = "Buffs: " + cdlSub;
+					break;
 			}
 		}
 
@@ -1122,12 +869,19 @@ internal static class CheatActions
 		};
 	}
 
-	private static string CleanUnlockTitle(string title)
+	private static string CleanUnlockTitle(string raw)
 	{
-		if (string.IsNullOrEmpty(title)) return "Unknown";
-		if (title.StartsWith("Tower - ", StringComparison.OrdinalIgnoreCase)) return title.Substring(8).Trim();
-		if (title.StartsWith("Building - ", StringComparison.OrdinalIgnoreCase)) return title.Substring(11).Trim();
-		return title.Trim();
+		string s = (raw ?? string.Empty).Replace("Tower - ", "").Replace("Building - ", "").Trim();
+		if (s.Equals("Frost Keep", StringComparison.OrdinalIgnoreCase)) return "Frost Keep";
+		if (s.Equals("Flame Thrower", StringComparison.OrdinalIgnoreCase)) return "Flame Thrower";
+		if (s.Equals("Poison Sprayer", StringComparison.OrdinalIgnoreCase)) return "Poison Sprayer";
+		if (s.Equals("Tesla Coil", StringComparison.OrdinalIgnoreCase)) return "Tesla Coil";
+		if (s.Equals("Vampire Lair", StringComparison.OrdinalIgnoreCase)) return "Vampire Lair";
+		if (s.Equals("Particle Cannon", StringComparison.OrdinalIgnoreCase)) return "Particle Cannon";
+		if (s.Equals("Mana Siphon", StringComparison.OrdinalIgnoreCase)) return "Mana Siphon";
+		if (s.Equals("Mana Bank", StringComparison.OrdinalIgnoreCase)) return "Mana Bank";
+		if (s.Equals("Haunted House", StringComparison.OrdinalIgnoreCase)) return "Haunted House";
+		return s;
 	}
 
 	private static string GetFriendlyTowerKey(TowerType tt)
@@ -1137,6 +891,7 @@ internal static class CheatActions
 			TowerType.Crossbow => "Ballista",
 			TowerType.Morter => "Mortar",
 			TowerType.Frost => "FrostKeep",
+			TowerType.Siphon => "ManaSiphon",
 			_ => tt.ToString()
 		};
 	}
@@ -1165,10 +920,7 @@ internal static class CheatActions
 		for (int i = 0; i < s.Length; i++)
 		{
 			char c = s[i];
-			if (i > 0 && char.IsUpper(c) && !char.IsUpper(s[i - 1]))
-			{
-				sb.Append(' ');
-			}
+			if (i > 0 && char.IsUpper(c) && !char.IsUpper(s[i - 1])) sb.Append(' ');
 			sb.Append(c);
 		}
 		return sb.ToString();
@@ -1176,16 +928,10 @@ internal static class CheatActions
 
 	private static void EnsureCardDataLibReflected()
 	{
-		if (_cardDataLibChecked)
-		{
-			return;
-		}
+		if (_cardDataLibChecked) return;
 		_cardDataLibChecked = true;
 		Type api = AccessTools.TypeByName("CardDataLib.CardDataLibAPI");
-		if (api != null)
-		{
-			_cdlGetCardMethod = api.GetMethod("GetCard", BindingFlags.Public | BindingFlags.Static);
-		}
+		if (api != null) _cdlGetCardMethod = api.GetMethod("GetCard", BindingFlags.Public | BindingFlags.Static);
 		Type cdd = AccessTools.TypeByName("CardsShared.CardDisplayData");
 		if (cdd != null)
 		{
@@ -1198,23 +944,11 @@ internal static class CheatActions
 	{
 		category = null;
 		subcategory = null;
-		if (_cdlGetCardMethod == null || _cddCategoryProp == null || _cddSubcategoryProp == null)
-		{
-			return false;
-		}
+		if (_cdlGetCardMethod == null || _cddCategoryProp == null || _cddSubcategoryProp == null) return false;
 		object cardObj = null;
-		if (!string.IsNullOrEmpty(unlockName))
-		{
-			cardObj = _cdlGetCardMethod.Invoke(null, new object[] { unlockName, null });
-		}
-		if (cardObj == null && !string.IsNullOrEmpty(title))
-		{
-			cardObj = _cdlGetCardMethod.Invoke(null, new object[] { null, title });
-		}
-		if (cardObj == null)
-		{
-			return false;
-		}
+		if (!string.IsNullOrEmpty(unlockName)) cardObj = _cdlGetCardMethod.Invoke(null, new object[] { unlockName, null });
+		if (cardObj == null && !string.IsNullOrEmpty(title)) cardObj = _cdlGetCardMethod.Invoke(null, new object[] { null, title });
+		if (cardObj == null) return false;
 		category = _cddCategoryProp.GetValue(cardObj)?.ToString();
 		subcategory = _cddSubcategoryProp.GetValue(cardObj)?.ToString();
 		return !string.IsNullOrEmpty(category) && !string.IsNullOrEmpty(subcategory);
@@ -1222,17 +956,9 @@ internal static class CheatActions
 
 	internal static bool GiveCard(CardCatalogEntry entry)
 	{
-		if (entry == null || entry.Card == null || CardManager.instance == null)
-		{
-			return false;
-		}
-		if (IsCardOwned(entry))
-		{
-			return false;
-		}
+		if (entry == null || entry.Card == null || CardManager.instance == null || IsCardOwned(entry)) return false;
 
 		UpgradeCard card = entry.Card;
-
 		if (card is TowerUnlockCard tuc && TowerUnlockManager.instance != null)
 		{
 			GameObject uiObj = TowerUIObjectRef(tuc);
@@ -1241,10 +967,7 @@ internal static class CheatActions
 				? UnlockedTowersRef(TowerUnlockManager.instance)
 				: UnlockedBuildingsRef(TowerUnlockManager.instance);
 
-			if (uiObj != null && unlockedList != null && !unlockedList.Contains(uiObj))
-			{
-				tuc.Upgrade();
-			}
+			if (uiObj != null && unlockedList != null && !unlockedList.Contains(uiObj)) tuc.Upgrade();
 		}
 		else
 		{
@@ -1264,15 +987,12 @@ internal static class CheatActions
 			{
 				foreach (UpgradeCard child in card.unlocks)
 				{
-					if (child != null && child.unlocked && !GrantedCardsThisRun.Contains(child) && !pool.Contains(child))
-					{
-						pool.Add(child);
-					}
+					if (child != null && child.unlocked && !GrantedCardsThisRun.Contains(child) && !pool.Contains(child)) pool.Add(child);
 				}
 			}
 		}
 
-		ModuleBridge.NotifyUpgradesMenuCardUnlocked(entry.UnlockName, entry.Title, entry.IsMonster);
+		CheatBridge.NotifyUpgradesMenuCardUnlocked(entry.UnlockName, entry.Title, entry.IsMonster);
 		return true;
 	}
 
@@ -1284,33 +1004,20 @@ internal static class CheatActions
 		{
 			if ((e.IsTowerUnlock && towers) || (e.IsBuildingUnlock && buildings))
 			{
-				if (GiveCard(e))
-				{
-					count++;
-				}
+				if (GiveCard(e)) count++;
 			}
 		}
-		if (count > 0)
-		{
-			SFXManager.instance?.ButtonClick();
-		}
+		if (count > 0) SFXManager.instance?.ButtonClick();
 		return count;
 	}
 
 	internal static int GiveCardTree(string treeKey, bool includeUnresearched)
 	{
 		EnsureCatalogBuilt();
-		if (!TreeGroupByKey.TryGetValue(treeKey, out TreeGroupSummary group))
-		{
-			return 0;
-		}
+		if (!TreeGroupByKey.TryGetValue(treeKey, out TreeGroupSummary group)) return 0;
 
-		// Order topologically from roots via unlocks BFS so unlocks apply cleanly
 		HashSet<UpgradeCard> groupSet = new HashSet<UpgradeCard>();
-		foreach (CardCatalogEntry e in group.Cards)
-		{
-			groupSet.Add(e.Card);
-		}
+		foreach (CardCatalogEntry e in group.Cards) groupSet.Add(e.Card);
 
 		List<CardCatalogEntry> ordered = new List<CardCatalogEntry>(group.Cards.Count);
 		HashSet<UpgradeCard> visited = new HashSet<UpgradeCard>();
@@ -1318,99 +1025,57 @@ internal static class CheatActions
 
 		foreach (CardCatalogEntry e in group.Cards)
 		{
-			if (e.IsTowerUnlock || e.IsBuildingUnlock)
-			{
-				if (visited.Add(e.Card))
-				{
-					q.Enqueue(e.Card);
-				}
-			}
+			if ((e.IsTowerUnlock || e.IsBuildingUnlock) && visited.Add(e.Card)) q.Enqueue(e.Card);
 		}
 		foreach (CardCatalogEntry e in group.Cards)
 		{
-			if (visited.Add(e.Card))
-			{
-				q.Enqueue(e.Card);
-			}
+			if (visited.Add(e.Card)) q.Enqueue(e.Card);
 		}
 
 		while (q.Count > 0)
 		{
 			UpgradeCard cur = q.Dequeue();
-			if (EntryByCard.TryGetValue(cur, out CardCatalogEntry ce))
-			{
-				ordered.Add(ce);
-			}
+			if (EntryByCard.TryGetValue(cur, out CardCatalogEntry ce)) ordered.Add(ce);
 			if (cur.unlocks == null) continue;
 			foreach (UpgradeCard child in cur.unlocks)
 			{
-				if (child != null && groupSet.Contains(child) && visited.Add(child))
-				{
-					q.Enqueue(child);
-				}
+				if (child != null && groupSet.Contains(child) && visited.Add(child)) q.Enqueue(child);
 			}
 		}
 
 		int granted = 0;
 		foreach (CardCatalogEntry ce in ordered)
 		{
-			if (!includeUnresearched && !ce.Card.unlocked)
-			{
-				continue;
-			}
-			if (GiveCard(ce))
-			{
-				granted++;
-			}
+			if (!includeUnresearched && !ce.Card.unlocked) continue;
+			if (GiveCard(ce)) granted++;
 		}
-		if (granted > 0)
-		{
-			SFXManager.instance?.ButtonClick();
-		}
+		if (granted > 0) SFXManager.instance?.ButtonClick();
 		return granted;
 	}
 
 	internal static int GiveSubBranch(UpgradeCard rootCard, bool includeUnresearched)
 	{
-		if (rootCard == null)
-		{
-			return 0;
-		}
+		if (rootCard == null) return 0;
 		EnsureCatalogBuilt();
 		Queue<UpgradeCard> q = new Queue<UpgradeCard>();
 		HashSet<UpgradeCard> visited = new HashSet<UpgradeCard>();
-		if (visited.Add(rootCard))
-		{
-			q.Enqueue(rootCard);
-		}
+		if (visited.Add(rootCard)) q.Enqueue(rootCard);
 
 		int granted = 0;
 		while (q.Count > 0)
 		{
 			UpgradeCard cur = q.Dequeue();
-			if (EntryByCard.TryGetValue(cur, out CardCatalogEntry ce))
+			if (EntryByCard.TryGetValue(cur, out CardCatalogEntry ce) && (includeUnresearched || cur.unlocked))
 			{
-				if (includeUnresearched || cur.unlocked)
-				{
-					if (GiveCard(ce))
-					{
-						granted++;
-					}
-				}
+				if (GiveCard(ce)) granted++;
 			}
 			if (cur.unlocks == null) continue;
 			foreach (UpgradeCard child in cur.unlocks)
 			{
-				if (child != null && visited.Add(child))
-				{
-					q.Enqueue(child);
-				}
+				if (child != null && visited.Add(child)) q.Enqueue(child);
 			}
 		}
-		if (granted > 0)
-		{
-			SFXManager.instance?.ButtonClick();
-		}
+		if (granted > 0) SFXManager.instance?.ButtonClick();
 		return granted;
 	}
 
@@ -1420,10 +1085,7 @@ internal static class CheatActions
 		int total = 0;
 		foreach (TreeGroupSummary g in TreeGroups)
 		{
-			if (g.Category == category)
-			{
-				total += GiveCardTree(g.TreeKey, includeUnresearched);
-			}
+			if (g.Category == category) total += GiveCardTree(g.TreeKey, includeUnresearched);
 		}
 		return total;
 	}
@@ -1434,10 +1096,7 @@ internal static class CheatActions
 		int total = 0;
 		foreach (TreeGroupSummary g in TreeGroups)
 		{
-			if (g.Category != CardFilterCategory.Monsters)
-			{
-				total += GiveCardTree(g.TreeKey, includeUnresearched);
-			}
+			if (g.Category != CardFilterCategory.Monsters) total += GiveCardTree(g.TreeKey, includeUnresearched);
 		}
 		return total;
 	}

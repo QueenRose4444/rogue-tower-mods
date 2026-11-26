@@ -6,7 +6,7 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 
-namespace RogueTowerCustomLevels;
+namespace RogueTowerCheats;
 
 internal sealed class HotbarItemInfo
 {
@@ -32,8 +32,7 @@ internal static class HotbarLoadoutPatches
 	[HarmonyPrefix]
 	private static void TowerUnlockManager_DisplayButtons_Prefix(TowerUnlockManager __instance)
 	{
-		// When RogueTowerQoL is installed, it handles hotbar sorting directly as a non-cheat QoL feature.
-		if (!ModuleBridge.HasCleanQoL && Plugin.AutoSortHotbar.Value)
+		if (!CheatBridge.HasCleanQoL && Plugin.AutoSortHotbar.Value)
 		{
 			HotbarAndLoadoutManager.SortManagerLists(__instance);
 		}
@@ -94,7 +93,7 @@ internal static class HotbarAndLoadoutManager
 	internal static void OnTowerUnlockManagerStart(TowerUnlockManager mgr)
 	{
 		EnsureInitialized();
-		if (!ModuleBridge.HasCleanQoL && Plugin.AutoSortHotbar.Value && mgr != null)
+		if (!CheatBridge.HasCleanQoL && Plugin.AutoSortHotbar.Value && mgr != null)
 		{
 			SortManagerLists(mgr);
 			DisplayButtonsMethod?.Invoke(mgr, null);
@@ -113,10 +112,7 @@ internal static class HotbarAndLoadoutManager
 
 	internal static void EnsureInitialized()
 	{
-		if (_initialized || TowerUnlockManager.instance == null)
-		{
-			return;
-		}
+		if (_initialized || TowerUnlockManager.instance == null) return;
 		_initialized = true;
 		ItemsById.Clear();
 		ItemsByUI.Clear();
@@ -149,16 +145,10 @@ internal static class HotbarAndLoadoutManager
 
 		void EnqueueCard(UpgradeCard c)
 		{
-			if (c != null && visited.Add(c))
-			{
-				bfs.Enqueue(c);
-			}
+			if (c != null && visited.Add(c)) bfs.Enqueue(c);
 		}
 
-		foreach (TowerUnlockCard tc in Resources.FindObjectsOfTypeAll<TowerUnlockCard>())
-		{
-			EnqueueCard(tc);
-		}
+		foreach (TowerUnlockCard tc in Resources.FindObjectsOfTypeAll<TowerUnlockCard>()) EnqueueCard(tc);
 		if (CardManager.instance != null)
 		{
 			List<UpgradeCard> startCards = StartCardsCheckRef(CardManager.instance);
@@ -191,18 +181,11 @@ internal static class HotbarAndLoadoutManager
 			{
 				if (card == null) continue;
 				GameObject uiObj = CardUIObjectRef(card);
-				if (uiObj == null || !uiObj.scene.IsValid() || ItemsByUI.ContainsKey(uiObj))
-				{
-					continue;
-				}
+				if (uiObj == null || !uiObj.scene.IsValid() || ItemsByUI.ContainsKey(uiObj)) continue;
 
 				bool isTower = CardIsTowerRef(card);
 				BuildButtonUI bbu = uiObj.GetComponentInChildren<BuildButtonUI>(includeInactive: true);
-				TowerType? tt = null;
-				if (bbu != null)
-				{
-					tt = AccessTools.FieldRefAccess<BuildButtonUI, TowerType>("myTowerType")(bbu);
-				}
+				TowerType? tt = bbu != null ? AccessTools.FieldRefAccess<BuildButtonUI, TowerType>("myTowerType")(bbu) : null;
 
 				string id = ResolveCanonicalId(card, uiObj, isTower, tt);
 				(string disp, string nick) = GetFriendlyNames(id, card.title);
@@ -226,10 +209,7 @@ internal static class HotbarAndLoadoutManager
 
 	private static void RegisterItem(HotbarItemInfo info)
 	{
-		if (info == null || string.IsNullOrEmpty(info.Id) || info.UIObject == null)
-		{
-			return;
-		}
+		if (info == null || string.IsNullOrEmpty(info.Id) || info.UIObject == null) return;
 		ItemsById[info.Id] = info;
 		ItemsByUI[info.UIObject] = info;
 	}
@@ -237,10 +217,7 @@ internal static class HotbarAndLoadoutManager
 	private static string ResolveCanonicalId(TowerUnlockCard card, GameObject uiObj, bool isTower, TowerType? tt)
 	{
 		string un = (UnlockNameRef(card) ?? string.Empty).Replace(" ", "");
-		string title = (card.title ?? string.Empty)
-			.Replace("Tower - ", "")
-			.Replace("Building - ", "")
-			.Replace(" ", "");
+		string title = (card.title ?? string.Empty).Replace("Tower - ", "").Replace("Building - ", "").Replace(" ", "");
 		string objName = uiObj != null ? uiObj.name.Replace(" ", "") : string.Empty;
 		string combined = (un + "|" + title + "|" + objName).ToLowerInvariant();
 
@@ -278,7 +255,6 @@ internal static class HotbarAndLoadoutManager
 
 		if (combined.Contains("mortar") || combined.Contains("morter")) return "Mortar";
 		if (combined.Contains("ballista") || combined.Contains("balista")) return "Ballista";
-
 		return !string.IsNullOrEmpty(title) ? title : (!string.IsNullOrEmpty(un) ? un : objName);
 	}
 
@@ -314,13 +290,9 @@ internal static class HotbarAndLoadoutManager
 	{
 		if (isTower)
 		{
-			return ModuleBridge.HasCleanQoL
-				? ModuleBridge.GetQoLTowerHotbarOrderCsv(DefaultTowerOrderCsv)
-				: Plugin.TowerHotbarOrder.Value;
+			return CheatBridge.HasCleanQoL ? CheatBridge.GetQoLTowerHotbarOrderCsv(DefaultTowerOrderCsv) : Plugin.TowerHotbarOrder.Value;
 		}
-		return ModuleBridge.HasCleanQoL
-			? ModuleBridge.GetQoLBuildingHotbarOrderCsv(DefaultBuildingOrderCsv)
-			: Plugin.BuildingHotbarOrder.Value;
+		return CheatBridge.HasCleanQoL ? CheatBridge.GetQoLBuildingHotbarOrderCsv(DefaultBuildingOrderCsv) : Plugin.BuildingHotbarOrder.Value;
 	}
 
 	internal static List<string> ParseOrderCsv(string csv, string fallbackCsv)
@@ -331,14 +303,10 @@ internal static class HotbarAndLoadoutManager
 		void AddFrom(string src)
 		{
 			if (string.IsNullOrEmpty(src)) return;
-			string[] parts = src.Split(new[] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries);
-			foreach (string raw in parts)
+			foreach (string raw in src.Split(new[] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries))
 			{
 				string id = raw.Trim();
-				if (!string.IsNullOrEmpty(id) && seen.Add(id))
-				{
-					list.Add(id);
-				}
+				if (!string.IsNullOrEmpty(id) && seen.Add(id)) list.Add(id);
 			}
 		}
 
@@ -350,36 +318,25 @@ internal static class HotbarAndLoadoutManager
 	internal static List<HotbarItemInfo> GetOrderedItems(bool isTower)
 	{
 		EnsureInitialized();
-		List<string> order = ParseOrderCsv(
-			GetEffectiveOrderCsv(isTower),
-			isTower ? DefaultTowerOrderCsv : DefaultBuildingOrderCsv);
+		List<string> order = ParseOrderCsv(GetEffectiveOrderCsv(isTower), isTower ? DefaultTowerOrderCsv : DefaultBuildingOrderCsv);
 
 		List<HotbarItemInfo> result = new List<HotbarItemInfo>();
 		HashSet<string> added = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
 		foreach (string id in order)
 		{
-			if (ItemsById.TryGetValue(id, out HotbarItemInfo info) && info.IsTower == isTower && added.Add(info.Id))
-			{
-				result.Add(info);
-			}
+			if (ItemsById.TryGetValue(id, out HotbarItemInfo info) && info.IsTower == isTower && added.Add(info.Id)) result.Add(info);
 		}
 		foreach (HotbarItemInfo info in ItemsById.Values)
 		{
-			if (info.IsTower == isTower && added.Add(info.Id))
-			{
-				result.Add(info);
-			}
+			if (info.IsTower == isTower && added.Add(info.Id)) result.Add(info);
 		}
 		return result;
 	}
 
 	internal static bool IsItemUnlocked(HotbarItemInfo info)
 	{
-		if (info == null || info.UIObject == null || TowerUnlockManager.instance == null)
-		{
-			return false;
-		}
+		if (info == null || info.UIObject == null || TowerUnlockManager.instance == null) return false;
 		List<GameObject> list = info.IsTower
 			? UnlockedTowersRef(TowerUnlockManager.instance)
 			: UnlockedBuildingsRef(TowerUnlockManager.instance);
@@ -389,10 +346,7 @@ internal static class HotbarAndLoadoutManager
 	internal static bool SetItemUnlocked(string id, bool unlock)
 	{
 		EnsureInitialized();
-		if (TowerUnlockManager.instance == null || !ItemsById.TryGetValue(id, out HotbarItemInfo info) || info.UIObject == null)
-		{
-			return false;
-		}
+		if (TowerUnlockManager.instance == null || !ItemsById.TryGetValue(id, out HotbarItemInfo info) || info.UIObject == null) return false;
 
 		List<GameObject> list = info.IsTower
 			? UnlockedTowersRef(TowerUnlockManager.instance)
@@ -403,10 +357,7 @@ internal static class HotbarAndLoadoutManager
 		if (unlock)
 		{
 			info.UIObject.SetActive(true);
-			if (list != null && !list.Contains(info.UIObject))
-			{
-				list.Add(info.UIObject);
-			}
+			if (list != null && !list.Contains(info.UIObject)) list.Add(info.UIObject);
 			if (info.UnlockCard != null)
 			{
 				CheatActions.RecordCardGranted(info.UnlockCard);
@@ -417,14 +368,11 @@ internal static class HotbarAndLoadoutManager
 					{
 						foreach (UpgradeCard child in info.UnlockCard.unlocks)
 						{
-							if (child != null && child.unlocked && !avail.Contains(child))
-							{
-								avail.Add(child);
-							}
+							if (child != null && child.unlocked && !avail.Contains(child)) avail.Add(child);
 						}
 					}
 				}
-				ModuleBridge.NotifyUpgradesMenuCardUnlocked(UnlockNameRef(info.UnlockCard), info.UnlockCard.title, false);
+				CheatBridge.NotifyUpgradesMenuCardUnlocked(UnlockNameRef(info.UnlockCard), info.UnlockCard.title, false);
 			}
 		}
 		else
@@ -434,10 +382,7 @@ internal static class HotbarAndLoadoutManager
 			if (info.UnlockCard != null)
 			{
 				CheatActions.UnrecordCardGranted(info.UnlockCard);
-				if (avail != null && info.UnlockCard.unlocked && !avail.Contains(info.UnlockCard))
-				{
-					avail.Add(info.UnlockCard);
-				}
+				if (avail != null && info.UnlockCard.unlocked && !avail.Contains(info.UnlockCard)) avail.Add(info.UnlockCard);
 			}
 			if (avail != null && info.TowerType.HasValue)
 			{
@@ -452,57 +397,33 @@ internal static class HotbarAndLoadoutManager
 
 	internal static void MoveItemInOrder(string id, int delta)
 	{
-		if (ModuleBridge.HasCleanQoL && ModuleBridge.MoveQoLHotbarItem(id, delta))
-		{
-			return;
-		}
+		if (CheatBridge.HasCleanQoL && CheatBridge.MoveQoLHotbarItem(id, delta)) return;
 
 		EnsureInitialized();
-		if (!ItemsById.TryGetValue(id, out HotbarItemInfo info))
-		{
-			return;
-		}
+		if (!ItemsById.TryGetValue(id, out HotbarItemInfo info)) return;
 
 		List<HotbarItemInfo> ordered = GetOrderedItems(info.IsTower);
 		int idx = ordered.FindIndex(x => string.Equals(x.Id, info.Id, StringComparison.OrdinalIgnoreCase));
-		if (idx < 0)
-		{
-			return;
-		}
+		if (idx < 0) return;
 		int target = Mathf.Clamp(idx + delta, 0, ordered.Count - 1);
-		if (target == idx)
-		{
-			return;
-		}
+		if (target == idx) return;
 
 		HotbarItemInfo item = ordered[idx];
 		ordered.RemoveAt(idx);
 		ordered.Insert(target, item);
 
 		List<string> ids = new List<string>(ordered.Count);
-		for (int i = 0; i < ordered.Count; i++)
-		{
-			ids.Add(ordered[i].Id);
-		}
+		for (int i = 0; i < ordered.Count; i++) ids.Add(ordered[i].Id);
 		string csv = string.Join(",", ids);
-		if (info.IsTower)
-		{
-			Plugin.TowerHotbarOrder.Value = csv;
-		}
-		else
-		{
-			Plugin.BuildingHotbarOrder.Value = csv;
-		}
+		if (info.IsTower) Plugin.TowerHotbarOrder.Value = csv;
+		else Plugin.BuildingHotbarOrder.Value = csv;
 
 		ForceRefreshHotbar();
 	}
 
 	internal static void ResetDefaultOrder()
 	{
-		if (ModuleBridge.HasCleanQoL && ModuleBridge.ResetQoLHotbarOrder())
-		{
-			return;
-		}
+		if (CheatBridge.HasCleanQoL && CheatBridge.ResetQoLHotbarOrder()) return;
 		Plugin.TowerHotbarOrder.Value = DefaultTowerOrderCsv;
 		Plugin.BuildingHotbarOrder.Value = DefaultBuildingOrderCsv;
 		ForceRefreshHotbar();
@@ -510,26 +431,17 @@ internal static class HotbarAndLoadoutManager
 
 	internal static void SortManagerLists(TowerUnlockManager mgr)
 	{
-		if (mgr == null)
-		{
-			return;
-		}
+		if (mgr == null) return;
 		EnsureInitialized();
 
 		Dictionary<string, int> towerRank = BuildRankMap(ParseOrderCsv(GetEffectiveOrderCsv(true), DefaultTowerOrderCsv));
 		Dictionary<string, int> bldRank = BuildRankMap(ParseOrderCsv(GetEffectiveOrderCsv(false), DefaultBuildingOrderCsv));
 
 		List<GameObject> towers = UnlockedTowersRef(mgr);
-		if (towers != null && towers.Count > 1)
-		{
-			towers.Sort((a, b) => GetRank(a, towerRank).CompareTo(GetRank(b, towerRank)));
-		}
+		if (towers != null && towers.Count > 1) towers.Sort((a, b) => GetRank(a, towerRank).CompareTo(GetRank(b, towerRank)));
 
 		List<GameObject> buildings = UnlockedBuildingsRef(mgr);
-		if (buildings != null && buildings.Count > 1)
-		{
-			buildings.Sort((a, b) => GetRank(a, bldRank).CompareTo(GetRank(b, bldRank)));
-		}
+		if (buildings != null && buildings.Count > 1) buildings.Sort((a, b) => GetRank(a, bldRank).CompareTo(GetRank(b, bldRank)));
 	}
 
 	private static Dictionary<string, int> BuildRankMap(List<string> list)
@@ -537,37 +449,22 @@ internal static class HotbarAndLoadoutManager
 		Dictionary<string, int> map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 		for (int i = 0; i < list.Count; i++)
 		{
-			if (!map.ContainsKey(list[i]))
-			{
-				map[list[i]] = i;
-			}
+			if (!map.ContainsKey(list[i])) map[list[i]] = i;
 		}
 		return map;
 	}
 
 	private static int GetRank(GameObject go, Dictionary<string, int> rankMap)
 	{
-		if (go != null && ItemsByUI.TryGetValue(go, out HotbarItemInfo info) && rankMap.TryGetValue(info.Id, out int rank))
-		{
-			return rank;
-		}
+		if (go != null && ItemsByUI.TryGetValue(go, out HotbarItemInfo info) && rankMap.TryGetValue(info.Id, out int rank)) return rank;
 		return int.MaxValue;
 	}
 
 	internal static void ForceRefreshHotbar()
 	{
-		if (ModuleBridge.HasCleanQoL && ModuleBridge.ForceRefreshQoLHotbar())
-		{
-			return;
-		}
-		if (TowerUnlockManager.instance == null)
-		{
-			return;
-		}
-		if (Plugin.AutoSortHotbar.Value)
-		{
-			SortManagerLists(TowerUnlockManager.instance);
-		}
+		if (CheatBridge.HasCleanQoL && CheatBridge.ForceRefreshQoLHotbar()) return;
+		if (TowerUnlockManager.instance == null) return;
+		if (Plugin.AutoSortHotbar.Value) SortManagerLists(TowerUnlockManager.instance);
 		DisplayButtonsMethod?.Invoke(TowerUnlockManager.instance, null);
 	}
 
@@ -587,28 +484,19 @@ internal static class HotbarAndLoadoutManager
 	internal static string GetSlotSummary(int slot)
 	{
 		ConfigEntry<string> cfg = GetSlotConfig(slot);
-		if (cfg == null || string.IsNullOrWhiteSpace(cfg.Value))
-		{
-			return "(Empty)";
-		}
+		if (cfg == null || string.IsNullOrWhiteSpace(cfg.Value)) return "(Empty)";
 		string[] halves = cfg.Value.Split('|');
 		int tCount = halves.Length > 0 ? halves[0].Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Length : 0;
 		int bCount = halves.Length > 1 ? halves[1].Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Length : 0;
 		string preview = halves[0].Replace(",", ", ");
-		if (preview.Length > 42)
-		{
-			preview = preview.Substring(0, 39) + "...";
-		}
+		if (preview.Length > 42) preview = preview.Substring(0, 39) + "...";
 		return $"{tCount}T + {bCount}B  ({preview})";
 	}
 
 	internal static void SaveCurrentToSlot(int slot)
 	{
 		ConfigEntry<string> cfg = GetSlotConfig(slot);
-		if (cfg == null)
-		{
-			return;
-		}
+		if (cfg == null) return;
 		EnsureInitialized();
 		List<string> activeTowers = new List<string>();
 		foreach (HotbarItemInfo info in GetOrderedItems(isTower: true))
@@ -626,51 +514,33 @@ internal static class HotbarAndLoadoutManager
 	internal static void ClearSlot(int slot)
 	{
 		ConfigEntry<string> cfg = GetSlotConfig(slot);
-		if (cfg != null)
-		{
-			cfg.Value = string.Empty;
-		}
+		if (cfg != null) cfg.Value = string.Empty;
 	}
 
 	internal static int ApplyLoadoutSlot(int slot, bool replaceExisting = true)
 	{
 		ConfigEntry<string> cfg = GetSlotConfig(slot);
-		if (cfg == null || string.IsNullOrWhiteSpace(cfg.Value) || TowerUnlockManager.instance == null)
-		{
-			return 0;
-		}
+		if (cfg == null || string.IsNullOrWhiteSpace(cfg.Value) || TowerUnlockManager.instance == null) return 0;
 		EnsureInitialized();
 
 		HashSet<string> wanted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-		string[] halves = cfg.Value.Split('|');
-		foreach (string half in halves)
+		foreach (string half in cfg.Value.Split('|'))
 		{
-			string[] tokens = half.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-			foreach (string t in tokens)
-			{
-				wanted.Add(t.Trim());
-			}
+			foreach (string t in half.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)) wanted.Add(t.Trim());
 		}
 
 		if (replaceExisting)
 		{
-			List<string> allIds = new List<string>(ItemsById.Keys);
-			foreach (string id in allIds)
+			foreach (string id in new List<string>(ItemsById.Keys))
 			{
-				if (!wanted.Contains(id))
-				{
-					SetItemUnlocked(id, unlock: false);
-				}
+				if (!wanted.Contains(id)) SetItemUnlocked(id, unlock: false);
 			}
 		}
 
 		int unlockedCount = 0;
 		foreach (string id in wanted)
 		{
-			if (SetItemUnlocked(id, unlock: true))
-			{
-				unlockedCount++;
-			}
+			if (SetItemUnlocked(id, unlock: true)) unlockedCount++;
 		}
 
 		ForceRefreshHotbar();
@@ -682,46 +552,23 @@ internal static class HotbarAndLoadoutManager
 	{
 		EnsureInitialized();
 		List<UpgradeCard> avail = AvailableCardsRef(cm);
-		if (avail == null || avail.Count == 0)
-		{
-			return;
-		}
+		if (avail == null || avail.Count == 0) return;
 
 		HashSet<TowerType> activeTowerTypes = new HashSet<TowerType>();
 		foreach (HotbarItemInfo info in ItemsById.Values)
 		{
-			if (info.TowerType.HasValue && IsItemUnlocked(info))
-			{
-				activeTowerTypes.Add(info.TowerType.Value);
-			}
+			if (info.TowerType.HasValue && IsItemUnlocked(info)) activeTowerTypes.Add(info.TowerType.Value);
 		}
 
 		avail.RemoveAll(card =>
 		{
-			if (card == null) return true;
-			if (card is TowerUnlockCard) return true;
+			if (card == null || card is TowerUnlockCard) return true;
 			if (card is TowerUpgradeCard tuc)
 			{
 				TowerType tt = UpgradeTowerTypeRef(tuc);
-				if (tt != TowerType.Global && tt != TowerType.DOT && !activeTowerTypes.Contains(tt))
-				{
-					return true;
-				}
+				if (tt != TowerType.Global && tt != TowerType.DOT && !activeTowerTypes.Contains(tt)) return true;
 			}
 			return false;
 		});
-	}
-
-	internal static List<string> GetActiveHotbarIds(bool isTower)
-	{
-		List<string> ids = new List<string>();
-		foreach (HotbarItemInfo info in GetOrderedItems(isTower))
-		{
-			if (IsItemUnlocked(info))
-			{
-				ids.Add(info.Id);
-			}
-		}
-		return ids;
 	}
 }
